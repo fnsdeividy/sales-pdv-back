@@ -1,12 +1,13 @@
 import { IsString, IsOptional, IsNumber, IsEnum, IsDateString, IsNotEmpty, Min, Max } from 'class-validator';
 import { Unit, BatchStatus } from '../../entities/material.entity';
+import { IsValidUnit } from '../validators/is-valid-unit.validator';
 
 export class CreateMaterialDto {
   @IsString()
   @IsNotEmpty()
   name: string;
 
-  @IsEnum(Unit)
+  @IsValidUnit()
   baseUnit: Unit;
 
   @IsOptional()
@@ -30,7 +31,7 @@ export class UpdateMaterialDto {
   name?: string;
 
   @IsOptional()
-  @IsEnum(Unit)
+  @IsValidUnit()
   baseUnit?: Unit;
 
   @IsOptional()
@@ -57,7 +58,7 @@ export class CreateMaterialBatchDto {
   @Min(0.001)
   qty: number;
 
-  @IsEnum(Unit)
+  @IsValidUnit()
   unit: Unit;
 
   @IsNumber()
@@ -87,7 +88,7 @@ export class UpdateMaterialBatchDto {
   qty?: number;
 
   @IsOptional()
-  @IsEnum(Unit)
+  @IsValidUnit()
   unit?: Unit;
 
   @IsOptional()
@@ -129,7 +130,7 @@ export class CreateProductBomDto {
   @Min(0.001)
   qty: number;
 
-  @IsEnum(Unit)
+  @IsValidUnit()
   unit: Unit;
 
   @IsOptional()
@@ -150,7 +151,7 @@ export class UpdateProductBomDto {
   qty?: number;
 
   @IsOptional()
-  @IsEnum(Unit)
+  @IsValidUnit()
   unit?: Unit;
 
   @IsOptional()
@@ -169,10 +170,10 @@ export class CreateUnitConversionDto {
   @IsString()
   materialId?: string;
 
-  @IsEnum(Unit)
+  @IsValidUnit()
   fromUnit: Unit;
 
-  @IsEnum(Unit)
+  @IsValidUnit()
   toUnit: Unit;
 
   @IsNumber()
@@ -189,6 +190,6 @@ export class ScaleRecipeDto {
   @Min(0.001)
   targetOutputQty: number;
 
-  @IsEnum(Unit)
+  @IsValidUnit()
   targetUnit: Unit;
 }

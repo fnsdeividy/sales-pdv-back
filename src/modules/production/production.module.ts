@@ -7,6 +7,7 @@ import { UnitConversionService } from './application/services/unit-conversion.se
 import { CostCalculationService } from './application/services/cost-calculation.service';
 import { ProductionOrdersService } from './application/services/production-orders.service';
 import { FixedCostsService } from './application/services/fixed-costs.service';
+import { MeasurementUnitsService } from './application/services/measurement-units.service';
 
 // Controllers
 import {
@@ -20,6 +21,8 @@ import {
   CostCalculationController,
 } from './presentation/http/controllers/production-orders.controller';
 import { FixedCostsController } from './presentation/http/controllers/fixed-costs.controller';
+import { MeasurementUnitsController } from './presentation/http/controllers/measurement-units.controller';
+import { IsValidUnitConstraint } from './presentation/validators/is-valid-unit.validator';
 
 @Module({
   imports: [PrismaModule],
@@ -31,6 +34,7 @@ import { FixedCostsController } from './presentation/http/controllers/fixed-cost
     ProductionOrdersController,
     CostCalculationController,
     FixedCostsController,
+    MeasurementUnitsController,
   ],
   providers: [
     UnitConversionService,
@@ -38,6 +42,8 @@ import { FixedCostsController } from './presentation/http/controllers/fixed-cost
     CostCalculationService,
     ProductionOrdersService,
     FixedCostsService,
+    MeasurementUnitsService,
+    IsValidUnitConstraint,
   ],
   exports: [
     MaterialsService,
@@ -45,6 +51,7 @@ import { FixedCostsController } from './presentation/http/controllers/fixed-cost
     CostCalculationService,
     ProductionOrdersService,
     FixedCostsService,
+    MeasurementUnitsService,
   ],
 })
 export class ProductionModule {}

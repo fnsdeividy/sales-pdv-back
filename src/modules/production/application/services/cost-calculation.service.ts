@@ -485,21 +485,94 @@ export class CostCalculationService {
   }
 
   /**
-   * Get suggested selling price with markup
+   * Get suggested selling price with markup (dynamic calculation based on current costs)
    */
-  async getSuggestedPrice(productId: string, markupPercent: number): Promise<number> {
-    const costCache = await this.prisma.productCostCache.findUnique({
-      where: { productId },
+  async getSuggestedPrice(
+    productId: string,
+    markupPercent: number,
+    outputQty?: number,
+    outputUnit?: Unit,
+    packagingCostPerUnit?: number,
+    overheadPercent?: number
+  ): Promise<number> {
+    // Try dynamic calculation first
+    try {
+      const unitCost = await this.calculateCurrentUnitCost(
+        productId,
+        outputQty,
+        outputUnit,
+        packagingCostPerUnit,
+        overheadPercent
+      );
+      return unitCost * (1 + markupPercent / 100);
+    } catch (error) {
+      // Fallback to cache if dynamic calculation fails
+      const costCache = await this.prisma.productCostCache.findUnique({
+        where: { productId },
+      });
+
+      if (!costCache) {
+        throw new BadRequestException(
+          `No cost information available for product ${productId}. Please ensure the product has a BOM configured or complete a production order first.`
+        );
+      }
+
+      const unitCost = toNumber(costCache.unitCost);
+      return unitCost * (1 + markupPercent / 100);
+    }
+  }
+
+  /**
+   * Calculate current unit cost dynamically based on current material costs
+   */
+  async calculateCurrentUnitCost(
+    productId: string,
+    outputQty: number = 1,
+    outputUnit?: Unit,
+    packagingCostPerUnit?: number,
+    overheadPercent?: number
+  ): Promise<number> {
+    // Get product info
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
     });
 
-    if (!costCache) {
+    if (!product) {
+      throw new BadRequestException(`Product with ID ${productId} not found`);
+    }
+
+    // Use product's output unit if not provided
+    const targetUnit = outputUnit || (product.outputUnit as Unit) || (product.baseUnit as Unit) || Unit.L;
+
+    // Calculate material consumptions
+    const consumptions = await this.calculateMaterialConsumptions(
+      productId,
+      outputQty,
+      targetUnit
+    );
+
+    if (consumptions.length === 0) {
       throw new BadRequestException(
-        `No cost information available for product ${productId}. Please complete a production order first.`
+        `Product ${productId} has no BOM configured. Please add materials to the product recipe first.`
       );
     }
 
-    const unitCost = toNumber(costCache.unitCost);
-    return unitCost * (1 + markupPercent / 100);
+    // Allocate materials using WAC to get current costs
+    const allocations = await this.allocateMaterialsWAC(consumptions);
+
+    // Get packaging and overhead from product or use defaults
+    const packagingCost = packagingCostPerUnit ?? 0;
+    const overhead = overheadPercent ?? 0;
+
+    // Calculate production cost
+    const costBreakdown = await this.calculateProductionCost(
+      allocations,
+      outputQty,
+      packagingCost,
+      overhead
+    );
+
+    return costBreakdown.unitCost;
   }
 
   /**

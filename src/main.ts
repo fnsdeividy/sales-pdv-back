@@ -3,9 +3,13 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { JwtAuthGuard } from './shared/presentation/http/guards/jwt-auth.guard';
+import { useContainer } from 'class-validator';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Configurar container para validators customizados
+  useContainer(app.select(AppModule), { fallbackOnErrors: true });
 
   // Configuração de CORS para permitir requisições do frontend
   app.enableCors({

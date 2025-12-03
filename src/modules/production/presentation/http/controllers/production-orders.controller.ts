@@ -98,11 +98,19 @@ export class CostCalculationController {
   @Get('suggested-price/:productId')
   async getSuggestedPrice(
     @Param('productId', ParseUUIDPipe) productId: string,
-    @Query('markup') markup: number = 30
+    @Query('markup') markup: number = 30,
+    @Query('outputQty') outputQty?: number,
+    @Query('outputUnit') outputUnit?: string,
+    @Query('packagingCostPerUnit') packagingCostPerUnit?: number,
+    @Query('overheadPercent') overheadPercent?: number
   ) {
     const suggestedPrice = await this.costCalculationService.getSuggestedPrice(
       productId,
-      markup
+      markup,
+      outputQty ? parseFloat(outputQty.toString()) : undefined,
+      outputUnit as any,
+      packagingCostPerUnit ? parseFloat(packagingCostPerUnit.toString()) : undefined,
+      overheadPercent ? parseFloat(overheadPercent.toString()) : undefined
     );
     return { productId, markup, suggestedPrice };
   }

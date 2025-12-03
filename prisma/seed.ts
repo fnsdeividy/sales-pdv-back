@@ -187,6 +187,30 @@ async function main() {
     },
   });
 
+  // Criar unidades de medida padrão
+  const defaultUnits = [
+    { name: 'Gramas', symbol: 'g', description: 'Unidade de medida de massa - gramas' },
+    { name: 'Quilogramas', symbol: 'kg', description: 'Unidade de medida de massa - quilogramas' },
+    { name: 'Mililitros', symbol: 'ml', description: 'Unidade de medida de volume - mililitros' },
+    { name: 'Litros', symbol: 'L', description: 'Unidade de medida de volume - litros' },
+    { name: 'Unidade', symbol: 'un', description: 'Unidade de medida para produtos unitários' },
+  ];
+
+  for (const unitData of defaultUnits) {
+    await prisma.measurementUnit.upsert({
+      where: { symbol: unitData.symbol },
+      update: {},
+      create: {
+        name: unitData.name,
+        symbol: unitData.symbol,
+        description: unitData.description,
+        isActive: true,
+      },
+    });
+  }
+
+  console.log('Default measurement units created:', defaultUnits.length);
+
   // Criar produtos de limpeza
   const products = [
     {

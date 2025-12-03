@@ -1,5 +1,6 @@
 import { IsString, IsOptional, IsNumber, IsEnum, IsDateString, IsNotEmpty, Min, Max } from 'class-validator';
 import { Unit, CostingMethod, ProductionOrderStatus } from '../../entities/material.entity';
+import { IsValidUnit } from '../validators/is-valid-unit.validator';
 
 export class CreateProductionOrderDto {
   @IsString()
@@ -10,7 +11,7 @@ export class CreateProductionOrderDto {
   @Min(0.001)
   plannedOutputQty: number;
 
-  @IsEnum(Unit)
+  @IsValidUnit()
   plannedUnit: Unit;
 
   @IsEnum(CostingMethod)
@@ -35,7 +36,7 @@ export class UpdateProductionOrderDto {
   plannedOutputQty?: number;
 
   @IsOptional()
-  @IsEnum(Unit)
+  @IsValidUnit()
   plannedUnit?: Unit;
 
   @IsOptional()
