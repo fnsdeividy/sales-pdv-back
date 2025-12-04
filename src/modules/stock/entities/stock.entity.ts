@@ -6,6 +6,8 @@ export class Stock {
   minQuantity: number;
   maxQuantity?: number;
   location?: string;
+  unitCost?: number;
+  totalCost?: number;
   createdAt: Date;
   updatedAt: Date;
 }

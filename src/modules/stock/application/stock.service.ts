@@ -11,15 +11,47 @@ export class StockService {
   async findAll(): Promise<Stock[]> {
     const stocks = await this.prisma.stock.findMany({
       include: {
-        product: true
+        product: {
+          include: {
+            costCache: true,
+            finishedGoods: {
+              orderBy: {
+                createdAt: 'desc'
+              },
+              take: 1
+            }
+          }
+        }
       }
     });
 
-    return stocks.map(stock => ({
-      ...stock,
-      maxQuantity: stock.maxQuantity || undefined,
-      location: stock.location || undefined,
-    })) as Stock[];
+    return stocks.map(stock => {
+      // Calcular custo unitário do produto
+      // Prioridade: 1) FinishedGoodsInventory mais recente, 2) ProductCostCache, 3) costPrice do produto
+      let unitCost = 0;
+      
+      if (stock.product.finishedGoods && stock.product.finishedGoods.length > 0) {
+        // Usar o custo do último lote de produção
+        unitCost = Number(stock.product.finishedGoods[0].unitCost);
+      } else if (stock.product.costCache) {
+        // Usar o cache de custo
+        unitCost = Number(stock.product.costCache.unitCost);
+      } else if (stock.product.costPrice) {
+        // Usar o preço de custo do produto
+        unitCost = Number(stock.product.costPrice);
+      }
+
+      // Calcular custo total (quantidade * custo unitário)
+      const totalCost = stock.quantity * unitCost;
+
+      return {
+        ...stock,
+        maxQuantity: stock.maxQuantity || undefined,
+        location: stock.location || undefined,
+        unitCost,
+        totalCost,
+      } as any;
+    }) as Stock[];
   }
 
   async getLowStock(): Promise<Stock[]> {
@@ -30,15 +62,41 @@ export class StockService {
         }
       },
       include: {
-        product: true
+        product: {
+          include: {
+            costCache: true,
+            finishedGoods: {
+              orderBy: {
+                createdAt: 'desc'
+              },
+              take: 1
+            }
+          }
+        }
       }
     });
 
-    return stocks.map(stock => ({
-      ...stock,
-      maxQuantity: stock.maxQuantity || undefined,
-      location: stock.location || undefined,
-    })) as Stock[];
+    return stocks.map(stock => {
+      let unitCost = 0;
+      
+      if (stock.product.finishedGoods && stock.product.finishedGoods.length > 0) {
+        unitCost = Number(stock.product.finishedGoods[0].unitCost);
+      } else if (stock.product.costCache) {
+        unitCost = Number(stock.product.costCache.unitCost);
+      } else if (stock.product.costPrice) {
+        unitCost = Number(stock.product.costPrice);
+      }
+
+      const totalCost = stock.quantity * unitCost;
+
+      return {
+        ...stock,
+        maxQuantity: stock.maxQuantity || undefined,
+        location: stock.location || undefined,
+        unitCost,
+        totalCost,
+      } as any;
+    }) as Stock[];
   }
 
   async getStockAlerts() {
@@ -49,7 +107,17 @@ export class StockService {
         }
       },
       include: {
-        product: true
+        product: {
+          include: {
+            costCache: true,
+            finishedGoods: {
+              orderBy: {
+                createdAt: 'desc'
+              },
+              take: 1
+            }
+          }
+        }
       }
     });
 
@@ -58,21 +126,45 @@ export class StockService {
         quantity: 0
       },
       include: {
-        product: true
+        product: {
+          include: {
+            costCache: true,
+            finishedGoods: {
+              orderBy: {
+                createdAt: 'desc'
+              },
+              take: 1
+            }
+          }
+        }
       }
     });
 
+    const calculateCosts = (stock: any) => {
+      let unitCost = 0;
+      
+      if (stock.product.finishedGoods && stock.product.finishedGoods.length > 0) {
+        unitCost = Number(stock.product.finishedGoods[0].unitCost);
+      } else if (stock.product.costCache) {
+        unitCost = Number(stock.product.costCache.unitCost);
+      } else if (stock.product.costPrice) {
+        unitCost = Number(stock.product.costPrice);
+      }
+
+      const totalCost = stock.quantity * unitCost;
+
+      return {
+        ...stock,
+        maxQuantity: stock.maxQuantity || undefined,
+        location: stock.location || undefined,
+        unitCost,
+        totalCost,
+      };
+    };
+
     return {
-      lowStock: lowStockItems.map(stock => ({
-        ...stock,
-        maxQuantity: stock.maxQuantity || undefined,
-        location: stock.location || undefined,
-      })),
-      outOfStock: outOfStockItems.map(stock => ({
-        ...stock,
-        maxQuantity: stock.maxQuantity || undefined,
-        location: stock.location || undefined,
-      })),
+      lowStock: lowStockItems.map(calculateCosts),
+      outOfStock: outOfStockItems.map(calculateCosts),
       totalAlerts: lowStockItems.length + outOfStockItems.length
     };
   }
@@ -109,10 +201,17 @@ export class StockService {
 
     const totalProducts = await this.prisma.product.count();
 
+    // Calcular custo total do estoque
+    const allStocks = await this.findAll();
+    const totalCost = allStocks.reduce((sum, stock) => {
+      return sum + ((stock as any).totalCost || 0);
+    }, 0);
+
     return {
       totalStock: totalStock._sum.quantity || 0,
       lowStockCount,
-      totalProducts
+      totalProducts,
+      totalCost
     };
   }
 
@@ -120,7 +219,17 @@ export class StockService {
     const stock = await this.prisma.stock.findUnique({
       where: { id },
       include: {
-        product: true
+        product: {
+          include: {
+            costCache: true,
+            finishedGoods: {
+              orderBy: {
+                createdAt: 'desc'
+              },
+              take: 1
+            }
+          }
+        }
       }
     });
 
@@ -128,10 +237,24 @@ export class StockService {
       throw new NotFoundException(`Stock with ID ${id} not found`);
     }
 
+    let unitCost = 0;
+    
+    if (stock.product.finishedGoods && stock.product.finishedGoods.length > 0) {
+      unitCost = Number(stock.product.finishedGoods[0].unitCost);
+    } else if (stock.product.costCache) {
+      unitCost = Number(stock.product.costCache.unitCost);
+    } else if (stock.product.costPrice) {
+      unitCost = Number(stock.product.costPrice);
+    }
+
+    const totalCost = stock.quantity * unitCost;
+
     return {
       ...stock,
       maxQuantity: stock.maxQuantity || undefined,
       location: stock.location || undefined,
+      unitCost,
+      totalCost,
     } as Stock;
   }
 
@@ -158,14 +281,38 @@ export class StockService {
     const stock = await this.prisma.stock.create({
       data: stockData,
       include: {
-        product: true
+        product: {
+          include: {
+            costCache: true,
+            finishedGoods: {
+              orderBy: {
+                createdAt: 'desc'
+              },
+              take: 1
+            }
+          }
+        }
       }
     });
+
+    let unitCost = 0;
+    
+    if (stock.product.finishedGoods && stock.product.finishedGoods.length > 0) {
+      unitCost = Number(stock.product.finishedGoods[0].unitCost);
+    } else if (stock.product.costCache) {
+      unitCost = Number(stock.product.costCache.unitCost);
+    } else if (stock.product.costPrice) {
+      unitCost = Number(stock.product.costPrice);
+    }
+
+    const totalCost = stock.quantity * unitCost;
 
     return {
       ...stock,
       maxQuantity: stock.maxQuantity || undefined,
       location: stock.location || undefined,
+      unitCost,
+      totalCost,
     } as Stock;
   }
 
@@ -183,14 +330,38 @@ export class StockService {
       where: { id },
       data: updateData,
       include: {
-        product: true
+        product: {
+          include: {
+            costCache: true,
+            finishedGoods: {
+              orderBy: {
+                createdAt: 'desc'
+              },
+              take: 1
+            }
+          }
+        }
       }
     });
+
+    let unitCost = 0;
+    
+    if (updatedStock.product.finishedGoods && updatedStock.product.finishedGoods.length > 0) {
+      unitCost = Number(updatedStock.product.finishedGoods[0].unitCost);
+    } else if (updatedStock.product.costCache) {
+      unitCost = Number(updatedStock.product.costCache.unitCost);
+    } else if (updatedStock.product.costPrice) {
+      unitCost = Number(updatedStock.product.costPrice);
+    }
+
+    const totalCost = updatedStock.quantity * unitCost;
 
     return {
       ...updatedStock,
       maxQuantity: updatedStock.maxQuantity || undefined,
       location: updatedStock.location || undefined,
+      unitCost,
+      totalCost,
     } as Stock;
   }
 
