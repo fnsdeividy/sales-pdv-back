@@ -19,6 +19,23 @@ export class StockService {
                 createdAt: 'desc'
               },
               take: 1
+            },
+            productionOrders: {
+              where: {
+                status: 'finished'
+              },
+              orderBy: {
+                finishedAt: 'desc'
+              },
+              take: 1,
+              select: {
+                totalMaterialCost: true,
+                totalPackagingCost: true,
+                totalOverheadCost: true,
+                totalCost: true,
+                unitCost: true,
+                actualOutputQty: true
+              }
             }
           }
         }
@@ -29,7 +46,13 @@ export class StockService {
       // Calcular custo unitário do produto
       // Prioridade: 1) FinishedGoodsInventory mais recente, 2) ProductCostCache, 3) costPrice do produto
       let unitCost = 0;
+      let costBreakdown: any = undefined;
       
+      // Buscar última ordem de produção finalizada para obter breakdown de custos
+      const lastProductionOrder = stock.product.productionOrders && stock.product.productionOrders.length > 0
+        ? stock.product.productionOrders[0]
+        : null;
+
       if (stock.product.finishedGoods && stock.product.finishedGoods.length > 0) {
         // Usar o custo do último lote de produção
         unitCost = Number(stock.product.finishedGoods[0].unitCost);
@@ -41,6 +64,23 @@ export class StockService {
         unitCost = Number(stock.product.costPrice);
       }
 
+      // Se temos ordem de produção, calcular breakdown de custos
+      if (lastProductionOrder && lastProductionOrder.actualOutputQty && Number(lastProductionOrder.actualOutputQty) > 0) {
+        const outputQty = Number(lastProductionOrder.actualOutputQty);
+        const totalMaterialCost = Number(lastProductionOrder.totalMaterialCost) || 0;
+        const totalPackagingCost = Number(lastProductionOrder.totalPackagingCost) || 0;
+        const totalOverheadCost = Number(lastProductionOrder.totalOverheadCost) || 0;
+
+        costBreakdown = {
+          materialCost: totalMaterialCost,
+          packagingCost: totalPackagingCost,
+          overheadCost: totalOverheadCost,
+          unitMaterialCost: outputQty > 0 ? totalMaterialCost / outputQty : 0,
+          unitPackagingCost: outputQty > 0 ? totalPackagingCost / outputQty : 0,
+          unitOverheadCost: outputQty > 0 ? totalOverheadCost / outputQty : 0,
+        };
+      }
+
       // Calcular custo total (quantidade * custo unitário)
       const totalCost = stock.quantity * unitCost;
 
@@ -50,6 +90,7 @@ export class StockService {
         location: stock.location || undefined,
         unitCost,
         totalCost,
+        costBreakdown,
       } as any;
     }) as Stock[];
   }
@@ -70,6 +111,23 @@ export class StockService {
                 createdAt: 'desc'
               },
               take: 1
+            },
+            productionOrders: {
+              where: {
+                status: 'finished'
+              },
+              orderBy: {
+                finishedAt: 'desc'
+              },
+              take: 1,
+              select: {
+                totalMaterialCost: true,
+                totalPackagingCost: true,
+                totalOverheadCost: true,
+                totalCost: true,
+                unitCost: true,
+                actualOutputQty: true
+              }
             }
           }
         }
@@ -78,6 +136,11 @@ export class StockService {
 
     return stocks.map(stock => {
       let unitCost = 0;
+      let costBreakdown: any = undefined;
+      
+      const lastProductionOrder = stock.product.productionOrders && stock.product.productionOrders.length > 0
+        ? stock.product.productionOrders[0]
+        : null;
       
       if (stock.product.finishedGoods && stock.product.finishedGoods.length > 0) {
         unitCost = Number(stock.product.finishedGoods[0].unitCost);
@@ -85,6 +148,22 @@ export class StockService {
         unitCost = Number(stock.product.costCache.unitCost);
       } else if (stock.product.costPrice) {
         unitCost = Number(stock.product.costPrice);
+      }
+
+      if (lastProductionOrder && lastProductionOrder.actualOutputQty && Number(lastProductionOrder.actualOutputQty) > 0) {
+        const outputQty = Number(lastProductionOrder.actualOutputQty);
+        const totalMaterialCost = Number(lastProductionOrder.totalMaterialCost) || 0;
+        const totalPackagingCost = Number(lastProductionOrder.totalPackagingCost) || 0;
+        const totalOverheadCost = Number(lastProductionOrder.totalOverheadCost) || 0;
+
+        costBreakdown = {
+          materialCost: totalMaterialCost,
+          packagingCost: totalPackagingCost,
+          overheadCost: totalOverheadCost,
+          unitMaterialCost: outputQty > 0 ? totalMaterialCost / outputQty : 0,
+          unitPackagingCost: outputQty > 0 ? totalPackagingCost / outputQty : 0,
+          unitOverheadCost: outputQty > 0 ? totalOverheadCost / outputQty : 0,
+        };
       }
 
       const totalCost = stock.quantity * unitCost;
@@ -95,6 +174,7 @@ export class StockService {
         location: stock.location || undefined,
         unitCost,
         totalCost,
+        costBreakdown,
       } as any;
     }) as Stock[];
   }
