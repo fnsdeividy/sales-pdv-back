@@ -128,15 +128,42 @@ export class SalesRepository implements ISalesRepository {
 
     // Criar ou encontrar cliente baseado nos dados fornecidos
     let customerId = '4F461257-2F49-4667-83E4-A9510DDAE575'; // Cliente padrão como fallback
+    let customerFound = false;
 
-    if (data.customerName) {
-      // Tentar encontrar cliente existente pelo nome
+    // Se customerId foi fornecido diretamente, usar ele
+    if (data.customerId) {
+      const existingCustomer = await this.prisma.customer.findUnique({
+        where: { id: data.customerId }
+      });
+      
+      if (existingCustomer) {
+        customerId = existingCustomer.id;
+        customerFound = true;
+        console.log(`Using provided customer ID: ${existingCustomer.firstName} ${existingCustomer.lastName}`);
+      } else {
+        console.warn(`Customer with ID ${data.customerId} not found, will try to find or create by name`);
+      }
+    }
+
+    // Se não encontramos cliente pelo ID e temos customerName, buscar ou criar cliente
+    if (!customerFound && data.customerName) {
+      // Separar nome completo em primeiro e último nome
+      const nameParts = data.customerName.trim().split(/\s+/);
+      const firstName = nameParts[0] || data.customerName;
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      // Tentar encontrar cliente existente pelo nome completo ou email
       const existingCustomer = await this.prisma.customer.findFirst({
         where: {
           OR: [
-            { firstName: { contains: data.customerName, mode: 'insensitive' } },
-            { lastName: { contains: data.customerName, mode: 'insensitive' } },
-            { email: data.customerEmail || undefined }
+            {
+              AND: [
+                { firstName: { equals: firstName, mode: 'insensitive' } },
+                { lastName: { equals: lastName, mode: 'insensitive' } }
+              ]
+            },
+            { email: data.customerEmail || undefined },
+            { phone: data.customerPhone || undefined }
           ]
         }
       });
@@ -148,8 +175,8 @@ export class SalesRepository implements ISalesRepository {
         // Criar novo cliente
         const newCustomer = await this.prisma.customer.create({
           data: {
-            firstName: data.customerName.split(' ')[0] || data.customerName,
-            lastName: data.customerName.split(' ').slice(1).join(' ') || '',
+            firstName: firstName,
+            lastName: lastName,
             email: data.customerEmail || null,
             phone: data.customerPhone || null,
             isActive: true,
