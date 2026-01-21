@@ -22,8 +22,14 @@ interface CostSummary {
 export class FixedCostsService {
   constructor(private prisma: PrismaService) {}
 
-  async getFixedCosts(filters: FixedCostsFiltersDto = {}) {
-    const where: any = {};
+  async getFixedCosts(filters: FixedCostsFiltersDto = {}, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const where: any = {
+      storeId: storeId, // Filtro obrigatório por loja
+    };
 
     if (filters.category) {
       where.category = filters.category;
@@ -46,71 +52,101 @@ export class FixedCostsService {
     });
   }
 
-  async getFixedCostById(id: string) {
-    const cost = await this.prisma.fixedCost.findUnique({
-      where: { id },
+  async getFixedCostById(id: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const cost = await this.prisma.fixedCost.findFirst({
+      where: { 
+        id,
+        storeId: storeId, // Filtro obrigatório por loja
+      },
     });
 
     if (!cost) {
-      throw new NotFoundException(`Fixed cost with ID ${id} not found`);
+      throw new NotFoundException(`Fixed cost with ID ${id} not found in your store`);
     }
 
     return cost;
   }
 
-  async createFixedCost(data: CreateFixedCostDto) {
-    // Verificar se já existe um custo com o mesmo nome
+  async createFixedCost(data: CreateFixedCostDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    // Verificar se já existe um custo com o mesmo nome na mesma loja
     const existingCost = await this.prisma.fixedCost.findFirst({
       where: {
         name: data.name,
+        storeId: storeId,
       },
     });
 
     if (existingCost) {
-      throw new BadRequestException(`A fixed cost with name "${data.name}" already exists`);
+      throw new BadRequestException(`A fixed cost with name "${data.name}" already exists in your store`);
     }
 
     return this.prisma.fixedCost.create({
       data: {
         ...data,
+        storeId: storeId, // Sempre usar o storeId do usuário autenticado
         isActive: data.isActive ?? true,
       },
     });
   }
 
-  async updateFixedCost(id: string, data: UpdateFixedCostDto) {
-    const existingCost = await this.getFixedCostById(id);
+  async updateFixedCost(id: string, data: UpdateFixedCostDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
 
-    // Verificar se o novo nome já existe (se estiver sendo alterado)
+    const existingCost = await this.getFixedCostById(id, storeId);
+
+    // Verificar se o novo nome já existe na mesma loja (se estiver sendo alterado)
     if (data.name && data.name !== existingCost.name) {
       const nameExists = await this.prisma.fixedCost.findFirst({
         where: {
           name: data.name,
+          storeId: storeId,
           id: { not: id },
         },
       });
 
       if (nameExists) {
-        throw new BadRequestException(`A fixed cost with name "${data.name}" already exists`);
+        throw new BadRequestException(`A fixed cost with name "${data.name}" already exists in your store`);
       }
     }
 
+    // Garantir que storeId não seja alterado
+    const updateData = { ...data };
+    delete (updateData as any).storeId;
+
     return this.prisma.fixedCost.update({
       where: { id },
-      data,
+      data: updateData,
     });
   }
 
-  async deleteFixedCost(id: string) {
-    await this.getFixedCostById(id);
+  async deleteFixedCost(id: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    await this.getFixedCostById(id, storeId);
 
     return this.prisma.fixedCost.delete({
       where: { id },
     });
   }
 
-  async toggleCostStatus(id: string) {
-    const cost = await this.getFixedCostById(id);
+  async toggleCostStatus(id: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const cost = await this.getFixedCostById(id, storeId);
 
     return this.prisma.fixedCost.update({
       where: { id },
@@ -120,16 +156,23 @@ export class FixedCostsService {
     });
   }
 
-  async duplicateCost(id: string, newName: string) {
-    const originalCost = await this.getFixedCostById(id);
+  async duplicateCost(id: string, newName: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
 
-    // Verificar se o novo nome já existe
+    const originalCost = await this.getFixedCostById(id, storeId);
+
+    // Verificar se o novo nome já existe na mesma loja
     const nameExists = await this.prisma.fixedCost.findFirst({
-      where: { name: newName },
+      where: { 
+        name: newName,
+        storeId: storeId,
+      },
     });
 
     if (nameExists) {
-      throw new BadRequestException(`A fixed cost with name "${newName}" already exists`);
+      throw new BadRequestException(`A fixed cost with name "${newName}" already exists in your store`);
     }
 
     return this.prisma.fixedCost.create({
@@ -139,13 +182,14 @@ export class FixedCostsService {
         amount: originalCost.amount,
         frequency: originalCost.frequency as FixedCostFrequency,
         category: originalCost.category as FixedCostCategory,
+        storeId: storeId, // Usar o mesmo storeId
         isActive: true, // Sempre criar como ativo
       },
     });
   }
 
-  async getCostsSummary(filters: FixedCostsFiltersDto = {}): Promise<CostSummary> {
-    const costs = await this.getFixedCosts(filters);
+  async getCostsSummary(filters: FixedCostsFiltersDto = {}, storeId: string): Promise<CostSummary> {
+    const costs = await this.getFixedCosts(filters, storeId);
 
     const summary: CostSummary = {
       totalMonthly: 0,

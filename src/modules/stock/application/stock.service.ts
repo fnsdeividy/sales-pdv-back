@@ -8,8 +8,15 @@ import { UpdateStockDto } from '../presentation/interfaces/stock.interface';
 export class StockService {
   constructor(private prisma: PrismaService) { }
 
-  async findAll(): Promise<Stock[]> {
+  async findAll(storeId?: string): Promise<Stock[]> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const stocks = await this.prisma.stock.findMany({
+      where: {
+        storeId: storeId,
+      },
       include: {
         product: {
           include: {
@@ -95,9 +102,14 @@ export class StockService {
     }) as Stock[];
   }
 
-  async getLowStock(): Promise<Stock[]> {
+  async getLowStock(storeId?: string): Promise<Stock[]> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const stocks = await this.prisma.stock.findMany({
       where: {
+        storeId: storeId,
         quantity: {
           lte: 10
         }
@@ -179,9 +191,14 @@ export class StockService {
     }) as Stock[];
   }
 
-  async getStockAlerts() {
+  async getStockAlerts(storeId?: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const lowStockItems = await this.prisma.stock.findMany({
       where: {
+        storeId: storeId,
         quantity: {
           lte: 10
         }
@@ -203,6 +220,7 @@ export class StockService {
 
     const outOfStockItems = await this.prisma.stock.findMany({
       where: {
+        storeId: storeId,
         quantity: 0
       },
       include: {
@@ -249,8 +267,17 @@ export class StockService {
     };
   }
 
-  async getTransactions() {
+  async getTransactions(storeId?: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     return this.prisma.stockTransaction.findMany({
+      where: {
+        stock: {
+          storeId: storeId,
+        },
+      },
       include: {
         stock: {
           include: {
@@ -264,8 +291,15 @@ export class StockService {
     });
   }
 
-  async getStatistics() {
+  async getStatistics(storeId?: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const totalStock = await this.prisma.stock.aggregate({
+      where: {
+        storeId: storeId,
+      },
       _sum: {
         quantity: true
       }
@@ -273,16 +307,21 @@ export class StockService {
 
     const lowStockCount = await this.prisma.stock.count({
       where: {
+        storeId: storeId,
         quantity: {
           lte: 10
         }
       }
     });
 
-    const totalProducts = await this.prisma.product.count();
+    const totalProducts = await this.prisma.product.count({
+      where: {
+        storeId: storeId,
+      },
+    });
 
     // Calcular custo total do estoque
-    const allStocks = await this.findAll();
+    const allStocks = await this.findAll(storeId);
     const totalCost = allStocks.reduce((sum, stock) => {
       return sum + ((stock as any).totalCost || 0);
     }, 0);
@@ -295,9 +334,16 @@ export class StockService {
     };
   }
 
-  async findOne(id: string): Promise<Stock> {
-    const stock = await this.prisma.stock.findUnique({
-      where: { id },
+  async findOne(id: string, storeId?: string): Promise<Stock> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const stock = await this.prisma.stock.findFirst({
+      where: {
+        id,
+        storeId: storeId,
+      },
       include: {
         product: {
           include: {
@@ -338,11 +384,27 @@ export class StockService {
     } as Stock;
   }
 
-  async create(data: CreateStockDto): Promise<Stock> {
+  async create(data: CreateStockDto, storeId?: string): Promise<Stock> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    // Verificar se o produto pertence à loja do usuário
+    const product = await this.prisma.product.findFirst({
+      where: {
+        id: data.productId,
+        storeId: storeId,
+      },
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product with ID ${data.productId} not found in your store`);
+    }
+
     // Mapear os campos do DTO para o schema do Prisma
     const stockData: any = {
       productId: data.productId,
-      storeId: data.storeId,
+      storeId: storeId, // Usar storeId do usuário, não do DTO
       quantity: data.quantity,
     };
 
@@ -396,8 +458,12 @@ export class StockService {
     } as Stock;
   }
 
-  async update(id: string, data: UpdateStockDto): Promise<Stock> {
-    const stock = await this.findOne(id);
+  async update(id: string, data: UpdateStockDto, storeId?: string): Promise<Stock> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const stock = await this.findOne(id, storeId);
 
     // Mapear os campos do DTO para o schema do Prisma
     const updateData: any = {};
@@ -445,8 +511,12 @@ export class StockService {
     } as Stock;
   }
 
-  async remove(id: string): Promise<void> {
-    await this.findOne(id);
+  async remove(id: string, storeId?: string): Promise<void> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    await this.findOne(id, storeId);
     await this.prisma.stock.delete({
       where: { id }
     });

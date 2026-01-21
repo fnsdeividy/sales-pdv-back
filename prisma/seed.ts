@@ -170,7 +170,7 @@ async function main() {
     },
   });
 
-  // Criar customer padrão
+  // Criar customer padrão vinculado à loja principal
   const defaultCustomer = await prisma.customer.upsert({
     where: { id: '4F461257-2F49-4667-83E4-A9510DDAE575' },
     update: {},
@@ -184,6 +184,9 @@ async function main() {
       city: 'São Paulo',
       state: 'SP',
       isActive: true,
+      store: {
+        connect: { id: mainStore.id },
+      },
     },
   });
 

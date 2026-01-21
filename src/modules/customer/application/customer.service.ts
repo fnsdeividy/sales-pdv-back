@@ -5,17 +5,27 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class CustomerService {
   constructor(private readonly prisma: PrismaService) { }
 
-  async findAll(page: number = 1, limit: number = 20, filters: any = {}) {
+  async findAll(page: number = 1, limit: number = 20, filters: any = {}, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = {
+      storeId: storeId, // Filtro obrigatório por loja
+    };
     
     if (filters.search) {
-      where.OR = [
-        { firstName: { contains: filters.search, mode: 'insensitive' } },
-        { lastName: { contains: filters.search, mode: 'insensitive' } },
-        { email: { contains: filters.search, mode: 'insensitive' } },
-        { phone: { contains: filters.search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { firstName: { contains: filters.search, mode: 'insensitive' } },
+            { lastName: { contains: filters.search, mode: 'insensitive' } },
+            { email: { contains: filters.search, mode: 'insensitive' } },
+            { phone: { contains: filters.search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -67,19 +77,30 @@ export class CustomerService {
     };
   }
 
-  async findById(id: string) {
-    const customer = await this.prisma.customer.findUnique({
-      where: { id },
+  async findById(id: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { 
+        id,
+        storeId: storeId, // Filtro obrigatório por loja
+      },
     });
 
     if (!customer) {
-      throw new NotFoundException(`Customer with ID ${id} not found`);
+      throw new NotFoundException(`Customer with ID ${id} not found in your store`);
     }
 
     return customer;
   }
 
-  async create(data: any) {
+  async create(data: any, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     return this.prisma.customer.create({
       data: {
         firstName: data.firstName,
@@ -92,12 +113,13 @@ export class CustomerService {
         zipCode: data.zipCode,
         birthDate: data.birthDate ? new Date(data.birthDate) : null,
         isActive: data.isActive ?? true,
+        storeId: storeId, // Sempre usar o storeId do usuário autenticado
       },
     });
   }
 
-  async update(id: string, data: any) {
-    const customer = await this.findById(id);
+  async update(id: string, data: any, storeId: string) {
+    const customer = await this.findById(id, storeId);
 
     return this.prisma.customer.update({
       where: { id },
@@ -112,20 +134,21 @@ export class CustomerService {
         zipCode: data.zipCode ?? customer.zipCode,
         birthDate: data.birthDate ? new Date(data.birthDate) : customer.birthDate,
         isActive: data.isActive ?? customer.isActive,
+        // storeId não é alterável
       },
     });
   }
 
-  async delete(id: string) {
-    await this.findById(id);
+  async delete(id: string, storeId: string) {
+    await this.findById(id, storeId);
 
     return this.prisma.customer.delete({
       where: { id },
     });
   }
 
-  async activate(id: string) {
-    await this.findById(id);
+  async activate(id: string, storeId: string) {
+    await this.findById(id, storeId);
 
     return this.prisma.customer.update({
       where: { id },
@@ -133,8 +156,8 @@ export class CustomerService {
     });
   }
 
-  async deactivate(id: string) {
-    await this.findById(id);
+  async deactivate(id: string, storeId: string) {
+    await this.findById(id, storeId);
 
     return this.prisma.customer.update({
       where: { id },
@@ -142,10 +165,16 @@ export class CustomerService {
     });
   }
 
-  async getStatistics() {
+  async getStatistics(storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const now = new Date();
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const baseWhere = { storeId: storeId };
 
     const [
       totalCustomers,
@@ -154,14 +183,15 @@ export class CustomerService {
       newCustomersThisMonth,
       newCustomersLastMonth,
     ] = await Promise.all([
-      this.prisma.customer.count(),
-      this.prisma.customer.count({ where: { isActive: true } }),
-      this.prisma.customer.count({ where: { isActive: false } }),
+      this.prisma.customer.count({ where: baseWhere }),
+      this.prisma.customer.count({ where: { ...baseWhere, isActive: true } }),
+      this.prisma.customer.count({ where: { ...baseWhere, isActive: false } }),
       this.prisma.customer.count({
-        where: { createdAt: { gte: thisMonth } },
+        where: { ...baseWhere, createdAt: { gte: thisMonth } },
       }),
       this.prisma.customer.count({
         where: {
+          ...baseWhere,
           createdAt: {
             gte: lastMonth,
             lt: thisMonth,
@@ -179,16 +209,39 @@ export class CustomerService {
     };
   }
 
-  async getCustomerOrders(customerId: string, page: number = 1, limit: number = 10) {
-    await this.findById(customerId);
+  async getCustomerOrders(customerId: string, page: number = 1, limit: number = 10, storeId: string) {
+    await this.findById(customerId, storeId);
 
     const skip = (page - 1) * limit;
 
-    // Por enquanto retorna uma lista vazia, pois não temos o módulo de orders implementado
+    // Buscar orders do cliente que pertencem à mesma loja
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where: {
+          customerId,
+          storeId: storeId,
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          orderItems: true,
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          customerId,
+          storeId: storeId,
+        },
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
     return {
-      orders: [],
-      total: 0,
-      totalPages: 0,
+      orders,
+      total,
+      totalPages,
       currentPage: page,
     };
   }
@@ -198,15 +251,25 @@ export class CustomerService {
     isActive?: boolean;
     city?: string;
     state?: string;
-  } = {}): Promise<string> {
-    const where: any = {};
+  } = {}, storeId: string): Promise<string> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const where: any = {
+      storeId: storeId, // Filtro obrigatório por loja
+    };
 
     if (filters.search) {
-      where.OR = [
-        { firstName: { contains: filters.search, mode: 'insensitive' } },
-        { lastName: { contains: filters.search, mode: 'insensitive' } },
-        { email: { contains: filters.search, mode: 'insensitive' } },
-        { phone: { contains: filters.search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { firstName: { contains: filters.search, mode: 'insensitive' } },
+            { lastName: { contains: filters.search, mode: 'insensitive' } },
+            { email: { contains: filters.search, mode: 'insensitive' } },
+            { phone: { contains: filters.search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 

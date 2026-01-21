@@ -12,6 +12,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { SalesService } from '@modules/sales/application/services/sales.service';
+import { CurrentUser } from '@shared/decorators/current-user.decorator';
 
 @Controller('sales')
 export class SalesController {
@@ -22,22 +23,32 @@ export class SalesController {
   async findAll(
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
+    @CurrentUser() user: any,
   ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
-    return await this.salesService.findAll(pageNum, limitNum);
+    return await this.salesService.findAll(pageNum, limitNum, user.storeId);
   }
 
   @Get('statistics')
   @HttpCode(HttpStatus.OK)
-  async getStatistics(@Query() filters: any) {
-    return await this.salesService.getStatistics(filters);
+  async getStatistics(@Query() filters: any, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return await this.salesService.getStatistics({ ...filters, storeId: user.storeId });
   }
 
   @Get('order/:orderNumber')
   @HttpCode(HttpStatus.OK)
-  async findByOrderNumber(@Param('orderNumber') orderNumber: string) {
-    return await this.salesService.findByOrderNumber(orderNumber);
+  async findByOrderNumber(@Param('orderNumber') orderNumber: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return await this.salesService.findByOrderNumber(orderNumber, user.storeId);
   }
 
   @Get('customer/:customerId')
@@ -46,44 +57,50 @@ export class SalesController {
     @Param('customerId') customerId: string,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
+    @CurrentUser() user: any,
   ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
-    return await this.salesService.findByCustomerId(customerId, pageNum, limitNum);
-  }
-
-  @Get('store/:storeId')
-  @HttpCode(HttpStatus.OK)
-  async findByStoreId(
-    @Param('storeId') storeId: string,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '10',
-  ) {
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
-    return await this.salesService.findByStoreId(storeId, pageNum, limitNum);
+    return await this.salesService.findByCustomerId(customerId, pageNum, limitNum, user.storeId);
   }
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  async findById(@Param('id') id: string) {
-    return await this.salesService.findById(id);
+  async findById(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return await this.salesService.findById(id, user.storeId);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() data: any) {
-    return await this.salesService.create(data);
+  async create(@Body() data: any, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado e use o do usuário autenticado
+    delete data.storeId;
+    return await this.salesService.create({ ...data, storeId: user.storeId });
   }
 
   @Post('simple')
   @HttpCode(HttpStatus.CREATED)
-  async createSimple(@Body() data: any) {
+  async createSimple(@Body() data: any, @CurrentUser() user: any) {
+    // Validação de segurança: garantir que o usuário está autenticado e tem storeId
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    
     // Endpoint simples que cria apenas a order sem items
+    // SEMPRE usar o storeId do usuário autenticado, nunca aceitar do body ou usar hardcoded
     const orderData = {
       orderNumber: data.orderNumber || `ORD-${Date.now()}`,
-      customerId: data.customerId || '4F461257-2F49-4667-83E4-A9510DDAE575',
-      storeId: data.storeId || 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
+      customerId: data.customerId || null,
+      storeId: user.storeId, // SEMPRE usar o storeId do usuário autenticado
       status: data.status || 'pending',
       totalAmount: data.totalAmount || 0,
       items: []
@@ -93,27 +110,41 @@ export class SalesController {
 
   @Put(':id')
   @HttpCode(HttpStatus.OK)
-  async update(@Param('id') id: string, @Body() data: any) {
-    await this.salesService.update(id, data);
-    const updatedSale = await this.salesService.findById(id);
+  async update(@Param('id') id: string, @Body() data: any, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado e use o do usuário autenticado
+    delete data.storeId;
+    await this.salesService.update(id, data, user.storeId);
+    const updatedSale = await this.salesService.findById(id, user.storeId);
     return updatedSale;
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string) {
-    await this.salesService.delete(id);
+  async delete(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    await this.salesService.delete(id, user.storeId);
   }
 
   @Patch(':id/cancel')
   @HttpCode(HttpStatus.OK)
-  async cancel(@Param('id') id: string, @Body() body: { reason?: string }) {
-    return await this.salesService.cancel(id, body.reason);
+  async cancel(@Param('id') id: string, @Body() body: { reason?: string }, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return await this.salesService.cancel(id, body.reason, user.storeId);
   }
 
   @Patch(':id/refund')
   @HttpCode(HttpStatus.OK)
-  async refund(@Param('id') id: string, @Body() body: { amount: number; reason?: string }) {
-    return await this.salesService.refund(id, body.amount, body.reason);
+  async refund(@Param('id') id: string, @Body() body: { amount: number; reason?: string }, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return await this.salesService.refund(id, body.amount, body.reason, user.storeId);
   }
 }

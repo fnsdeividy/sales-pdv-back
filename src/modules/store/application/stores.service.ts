@@ -5,35 +5,52 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class StoresService {
   constructor(private readonly prisma: PrismaService) { }
 
-  async findAll(page: number = 1, limit: number = 20, filters: any = {}) {
+  async findAll(page: number = 1, limit: number = 20, filters: any = {}, storeId: string) {
+    console.log('🔍 StoresService.findAll - StoreId recebido:', storeId);
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    // Sempre filtrar pela loja do usuário logado
+    const whereConditions: any[] = [
+      { id: storeId },
+    ];
 
+    // Adicionar filtros de busca
     if (filters.search) {
-      where.OR = [
-        { name: { contains: filters.search, mode: 'insensitive' } },
-        { address: { contains: filters.search, mode: 'insensitive' } },
-        { city: { contains: filters.search, mode: 'insensitive' } },
-        { state: { contains: filters.search, mode: 'insensitive' } },
-      ];
+      whereConditions.push({
+        OR: [
+          { name: { contains: filters.search, mode: 'insensitive' } },
+          { address: { contains: filters.search, mode: 'insensitive' } },
+          { city: { contains: filters.search, mode: 'insensitive' } },
+          { state: { contains: filters.search, mode: 'insensitive' } },
+        ],
+      });
     }
 
+    // Adicionar filtro de status
     if (filters.status) {
       if (filters.status === 'active') {
-        where.isActive = true;
+        whereConditions.push({ isActive: true });
       } else if (filters.status === 'inactive') {
-        where.isActive = false;
+        whereConditions.push({ isActive: false });
       }
     }
 
+    // Adicionar filtro de cidade
     if (filters.city) {
-      where.city = { contains: filters.city, mode: 'insensitive' };
+      whereConditions.push({ city: { contains: filters.city, mode: 'insensitive' } });
     }
 
+    // Adicionar filtro de estado
     if (filters.state) {
-      where.state = { contains: filters.state, mode: 'insensitive' };
+      whereConditions.push({ state: { contains: filters.state, mode: 'insensitive' } });
     }
+
+    // Construir o objeto where
+    const where = whereConditions.length > 1 
+      ? { AND: whereConditions }
+      : whereConditions[0];
+
+    console.log('🔍 StoresService.findAll - Where clause:', JSON.stringify(where, null, 2));
 
     const [stores, total] = await Promise.all([
       this.prisma.store.findMany({
@@ -44,6 +61,8 @@ export class StoresService {
       }),
       this.prisma.store.count({ where }),
     ]);
+
+    console.log(`✅ StoresService.findAll - Encontradas ${stores.length} lojas (total: ${total}) para storeId: ${storeId}`);
 
     const totalPages = Math.ceil(total / limit);
 
@@ -56,7 +75,12 @@ export class StoresService {
     };
   }
 
-  async findById(id: string) {
+  async findById(id: string, storeId: string) {
+    // Verificar se o id solicitado é o mesmo da loja do usuário
+    if (id !== storeId) {
+      throw new NotFoundException(`Store with ID ${id} not found or does not belong to your store`);
+    }
+
     const store = await this.prisma.store.findUnique({
       where: { id },
     });
@@ -86,37 +110,40 @@ export class StoresService {
     });
   }
 
-  async update(id: string, data: any) {
-    const store = await this.findById(id);
+  async update(id: string, data: any, storeId: string) {
+    // Verificar se o id solicitado é o mesmo da loja do usuário
+    await this.findById(id, storeId);
 
     return this.prisma.store.update({
       where: { id },
       data: {
-        name: data.name ?? store.name,
-        description: data.description ?? store.description,
-        address: data.address ?? store.address,
-        city: data.city ?? store.city,
-        state: data.state ?? store.state,
-        zipCode: data.zipCode ?? store.zipCode,
-        country: data.country ?? store.country,
-        phone: data.phone ?? store.phone,
-        email: data.email ?? store.email,
-        type: data.type ?? store.type,
-        isActive: data.isActive ?? store.isActive,
+        name: data.name,
+        description: data.description,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+        zipCode: data.zipCode,
+        country: data.country,
+        phone: data.phone,
+        email: data.email,
+        type: data.type,
+        isActive: data.isActive,
       },
     });
   }
 
-  async delete(id: string) {
-    await this.findById(id);
+  async delete(id: string, storeId: string) {
+    // Verificar se o id solicitado é o mesmo da loja do usuário
+    await this.findById(id, storeId);
 
     return this.prisma.store.delete({
       where: { id },
     });
   }
 
-  async activate(id: string) {
-    await this.findById(id);
+  async activate(id: string, storeId: string) {
+    // Verificar se o id solicitado é o mesmo da loja do usuário
+    await this.findById(id, storeId);
 
     return this.prisma.store.update({
       where: { id },
@@ -124,8 +151,9 @@ export class StoresService {
     });
   }
 
-  async deactivate(id: string) {
-    await this.findById(id);
+  async deactivate(id: string, storeId: string) {
+    // Verificar se o id solicitado é o mesmo da loja do usuário
+    await this.findById(id, storeId);
 
     return this.prisma.store.update({
       where: { id },
@@ -133,8 +161,9 @@ export class StoresService {
     });
   }
 
-  async putInMaintenance(id: string, reason?: string) {
-    await this.findById(id);
+  async putInMaintenance(id: string, reason: string | undefined, storeId: string) {
+    // Verificar se o id solicitado é o mesmo da loja do usuário
+    await this.findById(id, storeId);
 
     // Por enquanto, vamos apenas desativar a loja
     // Em uma implementação futura, podemos adicionar um campo 'status' ou 'maintenanceReason'
@@ -190,47 +219,38 @@ export class StoresService {
     return [];
   }
 
-  async getStatistics() {
+  async getStatistics(storeId: string) {
+    const where = { id: storeId };
+
     const [
       totalStores,
       activeStores,
       inactiveStores,
-      storesByType,
-      storesByState,
-      storesByCity,
     ] = await Promise.all([
-      this.prisma.store.count(),
-      this.prisma.store.count({ where: { isActive: true } }),
-      this.prisma.store.count({ where: { isActive: false } }),
-      this.prisma.store.groupBy({
-        by: ['type'],
-        _count: { type: true },
-      }),
-      this.prisma.store.groupBy({
-        by: ['state'],
-        _count: { state: true },
-      }),
-      this.prisma.store.groupBy({
-        by: ['city'],
-        _count: { city: true },
-      }),
+      this.prisma.store.count({ where }),
+      this.prisma.store.count({ where: { ...where, isActive: true } }),
+      this.prisma.store.count({ where: { ...where, isActive: false } }),
     ]);
 
-    // Transformar os resultados em objetos mais legíveis
-    const typeStats = storesByType.reduce((acc, item) => {
-      acc[item.type || 'unknown'] = item._count.type;
-      return acc;
-    }, {} as Record<string, number>);
+    // Buscar a loja para obter informações específicas
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: {
+        type: true,
+        state: true,
+        city: true,
+      },
+    });
 
-    const stateStats = storesByState.reduce((acc, item) => {
-      acc[item.state || 'unknown'] = item._count.state;
-      return acc;
-    }, {} as Record<string, number>);
+    const typeStats: Record<string, number> = {};
+    const stateStats: Record<string, number> = {};
+    const cityStats: Record<string, number> = {};
 
-    const cityStats = storesByCity.reduce((acc, item) => {
-      acc[item.city || 'unknown'] = item._count.city;
-      return acc;
-    }, {} as Record<string, number>);
+    if (store) {
+      typeStats[store.type || 'unknown'] = 1;
+      stateStats[store.state || 'unknown'] = 1;
+      cityStats[store.city || 'unknown'] = 1;
+    }
 
     return {
       totalStores,

@@ -26,8 +26,15 @@ export class ProductionOrdersService {
     private materialsService: MaterialsService
   ) { }
 
-  async findAll(): Promise<ProductionOrderSummaryDto[]> {
+  async findAll(storeId: string): Promise<ProductionOrderSummaryDto[]> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const orders = await this.prisma.productionOrder.findMany({
+      where: {
+        storeId: storeId, // Filtro obrigatório por loja
+      },
       include: {
         product: true,
         consumptions: {
@@ -58,7 +65,7 @@ export class ProductionOrdersService {
 
         // Add material availability if order is draft
         if (order.status === ProductionOrderStatus.draft) {
-          summary.materialAvailability = await this.checkMaterialAvailability(order.id);
+          summary.materialAvailability = await this.checkMaterialAvailability(order.id, storeId);
         }
 
         return summary;
@@ -66,9 +73,14 @@ export class ProductionOrdersService {
     );
   }
 
-  async findById(id: string) {
-    const order = await this.prisma.productionOrder.findUnique({
-      where: { id },
+  async findById(id: string, storeId?: string) {
+    const where: any = { id };
+    if (storeId) {
+      where.storeId = storeId;
+    }
+
+    const order = await this.prisma.productionOrder.findFirst({
+      where,
       include: {
         product: true,
         consumptions: {
@@ -82,28 +94,36 @@ export class ProductionOrdersService {
     });
 
     if (!order) {
-      throw new NotFoundException(`Production order with ID ${id} not found`);
+      throw new NotFoundException(`Production order with ID ${id} not found${storeId ? ' in your store' : ''}`);
     }
 
     return order;
   }
 
-  async create(data: CreateProductionOrderDto) {
-    // Verify product exists
-    const product = await this.prisma.product.findUnique({
-      where: { id: data.productId },
+  async create(data: CreateProductionOrderDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    // Verify product exists and belongs to the store
+    const product = await this.prisma.product.findFirst({
+      where: { 
+        id: data.productId,
+        storeId: storeId,
+      },
     });
 
     if (!product) {
-      throw new NotFoundException(`Product with ID ${data.productId} not found`);
+      throw new NotFoundException(`Product with ID ${data.productId} not found in your store`);
     }
 
     // Generate batch code
-    const batchCode = await this.generateBatchCode(data.productId);
+    const batchCode = await this.generateBatchCode(data.productId, storeId);
 
     const order = await this.prisma.productionOrder.create({
       data: {
         ...data,
+        storeId: storeId, // Sempre usar o storeId do usuário autenticado
         overheadPercent: data.overheadPercent || 0,
         packagingCostPerOutputUnit: data.packagingCostPerOutputUnit || 0,
         batchCode,
@@ -118,13 +138,21 @@ export class ProductionOrdersService {
     return order;
   }
 
-  async update(id: string, data: UpdateProductionOrderDto) {
-    await this.findById(id);
+  async update(id: string, data: UpdateProductionOrderDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    await this.findById(id, storeId);
+
+    // Garantir que storeId não seja alterado
+    const updateData = { ...data };
+    delete (updateData as any).storeId;
 
     const order = await this.prisma.productionOrder.update({
       where: { id },
       data: {
-        ...data,
+        ...updateData,
         startedAt: data.startedAt ? new Date(data.startedAt) : undefined,
         finishedAt: data.finishedAt ? new Date(data.finishedAt) : undefined,
       },
@@ -138,8 +166,12 @@ export class ProductionOrdersService {
     return order;
   }
 
-  async delete(id: string): Promise<void> {
-    const order = await this.findById(id);
+  async delete(id: string, storeId: string): Promise<void> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const order = await this.findById(id, storeId);
 
     if (order.status !== ProductionOrderStatus.draft) {
       throw new BadRequestException(
@@ -150,8 +182,12 @@ export class ProductionOrdersService {
     await this.prisma.productionOrder.delete({ where: { id } });
   }
 
-  async startProduction(id: string, data: StartProductionOrderDto) {
-    const order = await this.findById(id);
+  async startProduction(id: string, data: StartProductionOrderDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const order = await this.findById(id, storeId);
 
     if (order.status !== ProductionOrderStatus.draft) {
       throw new BadRequestException(
@@ -160,7 +196,7 @@ export class ProductionOrdersService {
     }
 
     // Check material availability
-    const availability = await this.checkMaterialAvailability(id);
+    const availability = await this.checkMaterialAvailability(id, storeId);
     const unavailableMaterials = availability.filter(m => m.status === 'unavailable');
 
     if (unavailableMaterials.length > 0) {
@@ -188,8 +224,12 @@ export class ProductionOrdersService {
     });
   }
 
-  async finishProduction(id: string, data: FinishProductionOrderDto) {
-    const order = await this.findById(id);
+  async finishProduction(id: string, data: FinishProductionOrderDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const order = await this.findById(id, storeId);
 
     if (order.status !== ProductionOrderStatus.in_progress) {
       throw new BadRequestException(
@@ -264,11 +304,15 @@ export class ProductionOrdersService {
       );
     });
 
-    return this.findById(id);
+    return this.findById(id, storeId);
   }
 
-  async cancelProduction(id: string) {
-    const order = await this.findById(id);
+  async cancelProduction(id: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const order = await this.findById(id, storeId);
 
     if (order.status === ProductionOrderStatus.finished) {
       throw new BadRequestException('Cannot cancel finished production orders');
@@ -292,8 +336,8 @@ export class ProductionOrdersService {
     });
   }
 
-  async checkMaterialAvailability(productionOrderId: string): Promise<MaterialAvailabilityDto[]> {
-    const order = await this.findById(productionOrderId);
+  async checkMaterialAvailability(productionOrderId: string, storeId?: string): Promise<MaterialAvailabilityDto[]> {
+    const order = await this.findById(productionOrderId, storeId);
 
     // Calculate required materials
     const consumptions = await this.costCalculationService.calculateMaterialConsumptions(
@@ -309,7 +353,8 @@ export class ProductionOrdersService {
       const materialAvailability = await this.materialsService.checkMaterialAvailability(
         consumption.materialId,
         consumption.finalQty,
-        consumption.requiredUnit
+        consumption.requiredUnit,
+        storeId
       );
 
       availability.push({
@@ -326,9 +371,16 @@ export class ProductionOrdersService {
     return availability;
   }
 
-  async getCostBreakdown(productionOrderId: string): Promise<CostBreakdownDto> {
-    const order = await this.prisma.productionOrder.findUnique({
-      where: { id: productionOrderId },
+  async getCostBreakdown(productionOrderId: string, storeId: string): Promise<CostBreakdownDto> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const order = await this.prisma.productionOrder.findFirst({
+      where: { 
+        id: productionOrderId,
+        storeId: storeId,
+      },
       include: {
         consumptions: {
           include: {
@@ -340,7 +392,7 @@ export class ProductionOrdersService {
     });
 
     if (!order) {
-      throw new NotFoundException(`Production order with ID ${productionOrderId} not found`);
+      throw new NotFoundException(`Production order with ID ${productionOrderId} not found in your store`);
     }
 
     if (order.status !== ProductionOrderStatus.finished) {
@@ -366,9 +418,14 @@ export class ProductionOrdersService {
     };
   }
 
-  private async generateBatchCode(productId: string): Promise<string> {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+  private async generateBatchCode(productId: string, storeId?: string): Promise<string> {
+    const productWhere: any = { id: productId };
+    if (storeId) {
+      productWhere.storeId = storeId;
+    }
+
+    const product = await this.prisma.product.findFirst({
+      where: productWhere,
       select: { name: true },
     });
 
@@ -381,14 +438,19 @@ export class ProductionOrdersService {
     const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
 
-    const dailyCount = await this.prisma.productionOrder.count({
-      where: {
-        productId,
-        createdAt: {
-          gte: startOfDay,
-          lt: endOfDay,
-        },
+    const countWhere: any = {
+      productId,
+      createdAt: {
+        gte: startOfDay,
+        lt: endOfDay,
       },
+    };
+    if (storeId) {
+      countWhere.storeId = storeId;
+    }
+
+    const dailyCount = await this.prisma.productionOrder.count({
+      where: countWhere,
     });
 
     const sequence = (dailyCount + 1).toString().padStart(3, '0');
@@ -410,10 +472,16 @@ export class ProductionOrdersService {
     // For now, we'll skip this as it adds complexity
   }
 
-  async getProductionMetrics() {
+  async getProductionMetrics(storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+
+    const baseWhere = { storeId: storeId };
 
     const [
       totalOrders,
@@ -423,21 +491,22 @@ export class ProductionOrdersService {
       finishedOrders,
       avgCostPerUnit,
     ] = await Promise.all([
-      this.prisma.productionOrder.count(),
+      this.prisma.productionOrder.count({ where: baseWhere }),
       this.prisma.productionOrder.count({
-        where: { createdAt: { gte: startOfMonth } },
+        where: { ...baseWhere, createdAt: { gte: startOfMonth } },
       }),
       this.prisma.productionOrder.count({
-        where: { createdAt: { gte: startOfWeek } },
+        where: { ...baseWhere, createdAt: { gte: startOfWeek } },
       }),
       this.prisma.productionOrder.count({
-        where: { status: ProductionOrderStatus.in_progress },
+        where: { ...baseWhere, status: ProductionOrderStatus.in_progress },
       }),
       this.prisma.productionOrder.count({
-        where: { status: ProductionOrderStatus.finished },
+        where: { ...baseWhere, status: ProductionOrderStatus.finished },
       }),
       this.prisma.productionOrder.aggregate({
         where: {
+          ...baseWhere,
           status: ProductionOrderStatus.finished,
           unitCost: { not: null },
         },

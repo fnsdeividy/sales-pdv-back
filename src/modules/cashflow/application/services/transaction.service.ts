@@ -21,11 +21,16 @@ interface TransactionFilters {
 export class TransactionService {
   constructor(private readonly prisma: PrismaService) { }
 
-  async create(createTransactionDto: CreateTransactionDto, userId: string) {
+  async create(createTransactionDto: CreateTransactionDto, userId: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const transaction = await this.prisma.transaction.create({
       data: {
         ...createTransactionDto,
         userId,
+        storeId, // Sempre usar o storeId do usuário autenticado
         date: new Date(createTransactionDto.date),
       },
     });
@@ -47,13 +52,18 @@ export class TransactionService {
       limit = 20
     } = filters;
 
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = {
+      storeId: storeId, // Filtro obrigatório por loja
+    };
 
     if (type) where.type = type;
     if (category) where.category = category;
-    if (storeId) where.storeId = storeId;
     if (userId) where.userId = userId;
     if (minAmount || maxAmount) {
       where.amount = {};
@@ -85,31 +95,47 @@ export class TransactionService {
     };
   }
 
-  async findById(id: string) {
-    const transaction = await this.prisma.transaction.findUnique({
-      where: { id },
+  async findById(id: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const transaction = await this.prisma.transaction.findFirst({
+      where: { 
+        id,
+        storeId: storeId, // Filtro obrigatório por loja
+      },
     });
 
     if (!transaction) {
-      throw new NotFoundException('Transaction not found');
+      throw new NotFoundException('Transaction not found in your store');
     }
 
     return transaction;
   }
 
-  async update(id: string, updateTransactionDto: UpdateTransactionDto) {
-    const existingTransaction = await this.prisma.transaction.findUnique({
-      where: { id },
+  async update(id: string, updateTransactionDto: UpdateTransactionDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const existingTransaction = await this.prisma.transaction.findFirst({
+      where: { 
+        id,
+        storeId: storeId,
+      },
     });
 
     if (!existingTransaction) {
-      throw new NotFoundException('Transaction not found');
+      throw new NotFoundException('Transaction not found in your store');
     }
 
     const updateData: any = { ...updateTransactionDto };
     if (updateTransactionDto.date) {
       updateData.date = new Date(updateTransactionDto.date);
     }
+    // Garantir que storeId não seja alterado
+    delete updateData.storeId;
 
     const transaction = await this.prisma.transaction.update({
       where: { id },
@@ -119,13 +145,20 @@ export class TransactionService {
     return transaction;
   }
 
-  async delete(id: string): Promise<void> {
-    const existingTransaction = await this.prisma.transaction.findUnique({
-      where: { id },
+  async delete(id: string, storeId: string): Promise<void> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const existingTransaction = await this.prisma.transaction.findFirst({
+      where: { 
+        id,
+        storeId: storeId,
+      },
     });
 
     if (!existingTransaction) {
-      throw new NotFoundException('Transaction not found');
+      throw new NotFoundException('Transaction not found in your store');
     }
 
     await this.prisma.transaction.delete({
@@ -133,9 +166,14 @@ export class TransactionService {
     });
   }
 
-  async findByDateRange(startDate: string, endDate: string) {
+  async findByDateRange(startDate: string, endDate: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const transactions = await this.prisma.transaction.findMany({
       where: {
+        storeId: storeId, // Filtro obrigatório por loja
         date: {
           gte: new Date(startDate),
           lte: new Date(endDate),
@@ -147,27 +185,32 @@ export class TransactionService {
     return transactions;
   }
 
-  async findByCategory(category: string) {
+  async findByCategory(category: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const transactions = await this.prisma.transaction.findMany({
-      where: { category },
+      where: { 
+        category,
+        storeId: storeId, // Filtro obrigatório por loja
+      },
       orderBy: { date: 'desc' },
     });
 
     return transactions;
   }
 
-  async findByStore(storeId: string) {
-    const transactions = await this.prisma.transaction.findMany({
-      where: { storeId },
-      orderBy: { date: 'desc' },
-    });
+  async findByUser(userId: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
 
-    return transactions;
-  }
-
-  async findByUser(userId: string) {
     const transactions = await this.prisma.transaction.findMany({
-      where: { userId },
+      where: { 
+        userId,
+        storeId: storeId, // Filtro obrigatório por loja
+      },
       orderBy: { date: 'desc' },
     });
 
@@ -177,8 +220,13 @@ export class TransactionService {
   async getCashFlowSummary(filters: TransactionFilters = {}) {
     const { startDate, endDate, storeId, userId } = filters;
 
-    const where: any = {};
-    if (storeId) where.storeId = storeId;
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const where: any = {
+      storeId: storeId, // Filtro obrigatório por loja
+    };
     if (userId) where.userId = userId;
     if (startDate || endDate) {
       where.date = {};
@@ -242,9 +290,16 @@ export class TransactionService {
     };
   }
 
-  async getCategories() {
+  async getCategories(storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const categories = await this.prisma.transaction.groupBy({
       by: ['category'],
+      where: {
+        storeId: storeId, // Filtro obrigatório por loja
+      },
       _count: { category: true },
     });
 
@@ -254,8 +309,13 @@ export class TransactionService {
   async getStatistics(filters: TransactionFilters = {}) {
     const { startDate, endDate, storeId, userId } = filters;
 
-    const where: any = {};
-    if (storeId) where.storeId = storeId;
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const where: any = {
+      storeId: storeId, // Filtro obrigatório por loja
+    };
     if (userId) where.userId = userId;
     if (startDate || endDate) {
       where.date = {};
@@ -330,6 +390,10 @@ export class TransactionService {
   }
 
   async exportTransactions(filters: TransactionFilters = {}, format: 'csv' | 'xlsx' = 'csv') {
+    if (!filters.storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const transactions = await this.findAll({ ...filters, limit: 10000 });
 
     // Aqui você implementaria a lógica de exportação
