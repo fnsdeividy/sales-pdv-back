@@ -34,6 +34,22 @@ export class UsersController {
     return this.usersService.findOne(id, user.storeId);
   }
 
+  @Patch(':id/activate')
+  activate(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.usersService.activate(id, user.storeId);
+  }
+
+  @Patch(':id/deactivate')
+  deactivate(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.usersService.deactivate(id, user.storeId);
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @CurrentUser() user: any) {
     if (!user?.storeId) {
