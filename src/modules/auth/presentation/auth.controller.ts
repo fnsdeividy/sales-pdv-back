@@ -9,9 +9,21 @@ export class AuthController {
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  async register(@Body() registerDto: { name: string; email: string; password: string }) {
+  async register(@Body() registerDto: { 
+    ownerName: string; 
+    storeName: string; 
+    email: string; 
+    whatsapp: string; 
+    password: string; 
+  }) {
     console.log('Tentativa de registro para:', registerDto.email);
-    return this.authService.register(registerDto.name, registerDto.email, registerDto.password);
+    return this.authService.register(
+      registerDto.ownerName,
+      registerDto.storeName,
+      registerDto.email,
+      registerDto.whatsapp,
+      registerDto.password
+    );
   }
 
   @Public()

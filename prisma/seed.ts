@@ -4,11 +4,28 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  // Criar loja principal primeiro (necessária para associar usuários)
+  const mainStore = await prisma.store.upsert({
+    where: { id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33' },
+    update: {},
+    create: {
+      id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
+      name: 'Loja Principal',
+      description: 'Loja principal do sistema Cloro',
+      address: 'Rua Principal, 123, Centro - São Paulo, SP',
+      phone: '+55 11 3333-3333',
+      email: 'principal@cloro.com',
+      isActive: true,
+    },
+  });
+
   // Criar usuário admin - Cassio
   const hashedPassword = await bcrypt.hash('admin123', 10);
   const adminUser1 = await prisma.user.upsert({
     where: { email: 'cassiobrr@gmail.com' },
-    update: {},
+    update: {
+      storeId: mainStore.id,
+    },
     create: {
       email: 'cassiobrr@gmail.com',
       password: hashedPassword,
@@ -16,13 +33,16 @@ async function main() {
       lastName: 'Admin',
       isActive: true,
       emailVerified: true,
+      storeId: mainStore.id,
     },
   });
 
   // Criar usuário admin - Cristiano
   const adminUser2 = await prisma.user.upsert({
     where: { email: 'cristianosenna79@gmail.com' },
-    update: {},
+    update: {
+      storeId: mainStore.id,
+    },
     create: {
       email: 'cristianosenna79@gmail.com',
       password: hashedPassword,
@@ -30,6 +50,7 @@ async function main() {
       lastName: 'Senna',
       isActive: true,
       emailVerified: true,
+      storeId: mainStore.id,
     },
   });
 
@@ -77,7 +98,9 @@ async function main() {
   const testPassword = await bcrypt.hash('test123', 10);
   const testUser = await prisma.user.upsert({
     where: { email: 'test@example.com' },
-    update: {},
+    update: {
+      storeId: mainStore.id,
+    },
     create: {
       email: 'test@example.com',
       password: testPassword,
@@ -85,6 +108,7 @@ async function main() {
       lastName: 'User',
       isActive: true,
       emailVerified: true,
+      storeId: mainStore.id,
     },
   });
 
@@ -129,7 +153,9 @@ async function main() {
   const cashierPassword = await bcrypt.hash('caixa123', 10);
   const cashierUser = await prisma.user.upsert({
     where: { email: 'caixa@example.com' },
-    update: {},
+    update: {
+      storeId: mainStore.id,
+    },
     create: {
       email: 'caixa@example.com',
       password: cashierPassword,
@@ -137,6 +163,7 @@ async function main() {
       lastName: 'Caixa',
       isActive: true,
       emailVerified: true,
+      storeId: mainStore.id,
     },
   });
 
@@ -155,20 +182,6 @@ async function main() {
     },
   });
 
-  // Criar loja principal
-  const mainStore = await prisma.store.upsert({
-    where: { id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33' },
-    update: {},
-    create: {
-      id: 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33',
-      name: 'Loja Principal',
-      description: 'Loja principal do sistema Cloro',
-      address: 'Rua Principal, 123, Centro - São Paulo, SP',
-      phone: '+55 11 3333-3333',
-      email: 'principal@cloro.com',
-      isActive: true,
-    },
-  });
 
   // Criar customer padrão vinculado à loja principal
   const defaultCustomer = await prisma.customer.upsert({

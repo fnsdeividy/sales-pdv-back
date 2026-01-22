@@ -136,7 +136,7 @@ export class AuthService {
     }
   }
 
-  async register(name: string, email: string, password: string) {
+  async register(ownerName: string, storeName: string, email: string, whatsapp: string, password: string) {
     try {
       // Verificar se o email já está cadastrado
       const existingUser = await this.prisma.user.findUnique({
@@ -152,17 +152,38 @@ export class AuthService {
         throw new BadRequestException('Senha deve ter pelo menos 6 caracteres');
       }
 
-      // O campo "name" agora é o nome da loja
-      const storeName = name.trim();
+      // Validar campos obrigatórios
+      if (!ownerName || ownerName.trim().length < 3) {
+        throw new BadRequestException('Nome do proprietário deve ter pelo menos 3 caracteres');
+      }
+
+      if (!storeName || storeName.trim().length < 3) {
+        throw new BadRequestException('Nome da loja deve ter pelo menos 3 caracteres');
+      }
+
+      // Validar WhatsApp (deve existir e ter pelo menos 10 caracteres após trim)
+      if (!whatsapp || typeof whatsapp !== 'string') {
+        throw new BadRequestException('Número do WhatsApp é obrigatório');
+      }
+
+      const whatsappTrimmed = whatsapp.trim();
+      if (whatsappTrimmed.length < 10) {
+        throw new BadRequestException('Número do WhatsApp deve ter pelo menos 10 dígitos');
+      }
 
       // Fazer hash da senha
       const hashedPassword = await bcrypt.hash(password, 10);
 
+      // Separar nome do proprietário em firstName e lastName
+      const nameParts = ownerName.trim().split(' ');
+      const firstName = nameParts[0] || ownerName.trim();
+      const lastName = nameParts.slice(1).join(' ') || '';
+
       // Criar loja com o nome fornecido pelo usuário
       const store = await this.prisma.store.create({
         data: {
-          name: storeName,
-          description: `Loja ${storeName}`,
+          name: storeName.trim(),
+          description: `Loja ${storeName.trim()}`,
           type: 'main',
           isActive: true,
         },
@@ -171,14 +192,10 @@ export class AuthService {
       console.log('🏪 Nova loja criada durante registro:', {
         storeId: store.id,
         storeName: store.name,
+        ownerName: ownerName,
         email: email,
+        whatsapp: whatsappTrimmed,
       });
-
-      // Extrair nome do usuário do email (parte antes do @) ou usar um padrão
-      const emailParts = email.split('@');
-      const userName = emailParts[0] || 'Usuário';
-      const firstName = userName.charAt(0).toUpperCase() + userName.slice(1);
-      const lastName = '';
 
       // Criar o usuário associado à loja
       const user = await this.prisma.user.create({
@@ -187,6 +204,7 @@ export class AuthService {
           password: hashedPassword,
           firstName,
           lastName,
+          phone: whatsappTrimmed, // Salvar WhatsApp no campo phone (já validado e trimado)
           isActive: true,
           emailVerified: false,
           storeId: store.id,
@@ -242,7 +260,13 @@ export class AuthService {
 
       console.log('✅ Registro bem-sucedido para:', email);
       console.log('✅ Loja criada:', { storeId: store.id, storeName: store.name });
-      console.log('✅ Usuário criado:', { userId: user.id, storeId: user.storeId });
+      console.log('✅ Usuário criado:', { 
+        userId: user.id, 
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        storeId: user.storeId 
+      });
 
       return {
         user: {
