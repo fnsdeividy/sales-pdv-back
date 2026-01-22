@@ -13,18 +13,25 @@ import {
 import { TransactionService } from '@modules/cashflow/application/services/transaction.service';
 import { CreateTransactionDto } from '@modules/cashflow/presentation/dto/createTransaction.dto';
 import { UpdateTransactionDto } from '@modules/cashflow/presentation/dto/updateTransaction.dto';
-// import { JwtAuthGuard } from '@shared/presentation/http/guards/jwt-auth.guard';
+import { CurrentUser } from '../../../../../shared/decorators/current-user.decorator';
 
 @Controller('cashflow')
-// @UseGuards(JwtAuthGuard) - Temporariamente desabilitado para desenvolvimento
 export class TransactionController {
   constructor(private readonly transactionService: TransactionService) { }
 
   @Post()
-  async create(@Body() createTransactionDto: CreateTransactionDto, @Request() req) {
-    // Para desenvolvimento, usar um userId padrão quando não há autenticação
-    const userId = req.user?.id || 'dev-user-id';
-    const result = await this.transactionService.create(createTransactionDto, userId);
+  async create(@Body() createTransactionDto: CreateTransactionDto, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    if (!user?.id) {
+      throw new Error('Usuário não autenticado.');
+    }
+    
+    // Garantir que o storeId do body seja ignorado e use o do usuário autenticado
+    delete (createTransactionDto as any).storeId;
+    
+    const result = await this.transactionService.create(createTransactionDto, user.id, user.storeId);
 
     return {
       success: true,
@@ -34,22 +41,27 @@ export class TransactionController {
 
   @Get()
   async findAll(
+    @CurrentUser() user: any,
     @Query('type') type?: string,
     @Query('category') category?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('storeId') storeId?: string,
     @Query('minAmount') minAmount?: number,
     @Query('maxAmount') maxAmount?: number,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+
+    // Sempre usar o storeId do usuário autenticado, ignorando query parameter
     const result = await this.transactionService.findAll({
       type: type as any,
       category,
       startDate,
       endDate,
-      storeId,
+      storeId: user.storeId, // Sempre do usuário autenticado
       minAmount,
       maxAmount,
       page,
@@ -63,27 +75,50 @@ export class TransactionController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.transactionService.findById(id);
+  async findOne(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.transactionService.findById(id, user.storeId);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateTransactionDto: UpdateTransactionDto) {
-    return this.transactionService.update(id, updateTransactionDto);
+  async update(
+    @Param('id') id: string, 
+    @Body() updateTransactionDto: UpdateTransactionDto,
+    @CurrentUser() user: any,
+  ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado
+    delete (updateTransactionDto as any).storeId;
+    return this.transactionService.update(id, updateTransactionDto, user.storeId);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.transactionService.delete(id);
+  async remove(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.transactionService.delete(id, user.storeId);
   }
 
   @Get('summary/overview')
   async getCashFlowSummary(
+    @CurrentUser() user: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('storeId') storeId?: string,
   ) {
-    const result = await this.transactionService.getCashFlowSummary({ startDate, endDate, storeId });
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+
+    const result = await this.transactionService.getCashFlowSummary({ 
+      startDate, 
+      endDate, 
+      storeId: user.storeId // Sempre do usuário autenticado
+    });
 
     return {
       success: true,
@@ -92,48 +127,69 @@ export class TransactionController {
   }
 
   @Get('categories/list')
-  getCategories() {
-    return this.transactionService.getCategories();
+  async getCategories(@CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.transactionService.getCategories(user.storeId);
   }
 
   @Get('by-date-range')
-  findByDateRange(
+  async findByDateRange(
+    @CurrentUser() user: any,
     @Query('startDate') startDate: string,
     @Query('endDate') endDate: string,
   ) {
-    return this.transactionService.findByDateRange(startDate, endDate);
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.transactionService.findByDateRange(startDate, endDate, user.storeId);
   }
 
   @Get('by-category/:category')
-  findByCategory(@Param('category') category: string) {
-    return this.transactionService.findByCategory(category);
-  }
-
-  @Get('by-store/:storeId')
-  findByStore(@Param('storeId') storeId: string) {
-    return this.transactionService.findByStore(storeId);
+  async findByCategory(@Param('category') category: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.transactionService.findByCategory(category, user.storeId);
   }
 
   @Get('statistics/overview')
-  getStatistics(
+  async getStatistics(
+    @CurrentUser() user: any,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('storeId') storeId?: string,
   ) {
-    return this.transactionService.getStatistics({ startDate, endDate, storeId });
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.transactionService.getStatistics({ 
+      startDate, 
+      endDate, 
+      storeId: user.storeId // Sempre do usuário autenticado
+    });
   }
 
   @Get('export/transactions')
-  exportTransactions(
+  async exportTransactions(
+    @CurrentUser() user: any,
     @Query('type') type?: string,
     @Query('category') category?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('storeId') storeId?: string,
     @Query('format') format: 'csv' | 'xlsx' = 'csv',
   ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
     return this.transactionService.exportTransactions(
-      { type: type as any, category, startDate, endDate, storeId },
+      { 
+        type: type as any, 
+        category, 
+        startDate, 
+        endDate, 
+        storeId: user.storeId // Sempre do usuário autenticado
+      },
       format
     );
   }

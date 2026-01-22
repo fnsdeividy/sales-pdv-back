@@ -21,6 +21,7 @@ import {
   CreateUnitConversionDto,
   ScaleRecipeDto,
 } from '../../dto/material.dto';
+import { CurrentUser } from '../../../../../shared/decorators/current-user.decorator';
 
 @Controller('production/materials')
 export class MaterialsController {
@@ -31,36 +32,59 @@ export class MaterialsController {
 
   // Materials endpoints
   @Get()
-  async findAllMaterials() {
-    return this.materialsService.findAllMaterials();
+  async findAllMaterials(@CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.findAllMaterials(user.storeId);
   }
 
   @Get('low-stock')
-  async getLowStockMaterials() {
-    return this.materialsService.getLowStockMaterials();
+  async getLowStockMaterials(@CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.getLowStockMaterials(user.storeId);
   }
 
   @Get(':id')
-  async findMaterialById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.materialsService.findMaterialById(id);
+  async findMaterialById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.findMaterialById(id, user.storeId);
   }
 
   @Post()
-  async createMaterial(@Body() data: CreateMaterialDto) {
-    return this.materialsService.createMaterial(data);
+  async createMaterial(@Body() data: CreateMaterialDto, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado
+    delete (data as any).storeId;
+    return this.materialsService.createMaterial(data, user.storeId);
   }
 
   @Put(':id')
   async updateMaterial(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() data: UpdateMaterialDto
+    @Body() data: UpdateMaterialDto,
+    @CurrentUser() user: any
   ) {
-    return this.materialsService.updateMaterial(id, data);
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado
+    delete (data as any).storeId;
+    return this.materialsService.updateMaterial(id, data, user.storeId);
   }
 
   @Delete(':id')
-  async deleteMaterial(@Param('id', ParseUUIDPipe) id: string) {
-    await this.materialsService.deleteMaterial(id);
+  async deleteMaterial(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    await this.materialsService.deleteMaterial(id, user.storeId);
     return { message: 'Material deleted successfully' };
   }
 
@@ -69,9 +93,13 @@ export class MaterialsController {
   async checkMaterialAvailability(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('qty') qty: number,
-    @Query('unit') unit: string
+    @Query('unit') unit: string,
+    @CurrentUser() user: any
   ) {
-    return this.materialsService.checkMaterialAvailability(id, qty, unit as any);
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.checkMaterialAvailability(id, qty, unit as any, user.storeId);
   }
 }
 
@@ -80,31 +108,54 @@ export class MaterialBatchesController {
   constructor(private readonly materialsService: MaterialsService) {}
 
   @Get('material/:materialId')
-  async findMaterialBatches(@Param('materialId', ParseUUIDPipe) materialId: string) {
-    return this.materialsService.findMaterialBatches(materialId);
+  async findMaterialBatches(
+    @Param('materialId', ParseUUIDPipe) materialId: string,
+    @CurrentUser() user: any
+  ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.findMaterialBatches(materialId, user.storeId);
   }
 
   @Get(':id')
-  async findBatchById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.materialsService.findBatchById(id);
+  async findBatchById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.findBatchById(id, user.storeId);
   }
 
   @Post()
-  async createMaterialBatch(@Body() data: CreateMaterialBatchDto) {
-    return this.materialsService.createMaterialBatch(data);
+  async createMaterialBatch(@Body() data: CreateMaterialBatchDto, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado
+    delete (data as any).storeId;
+    return this.materialsService.createMaterialBatch(data, user.storeId);
   }
 
   @Put(':id')
   async updateMaterialBatch(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() data: UpdateMaterialBatchDto
+    @Body() data: UpdateMaterialBatchDto,
+    @CurrentUser() user: any
   ) {
-    return this.materialsService.updateMaterialBatch(id, data);
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado
+    delete (data as any).storeId;
+    return this.materialsService.updateMaterialBatch(id, data, user.storeId);
   }
 
   @Delete(':id')
-  async deleteMaterialBatch(@Param('id', ParseUUIDPipe) id: string) {
-    await this.materialsService.deleteMaterialBatch(id);
+  async deleteMaterialBatch(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    await this.materialsService.deleteMaterialBatch(id, user.storeId);
     return { message: 'Material batch deleted successfully' };
   }
 }
@@ -114,42 +165,70 @@ export class BomController {
   constructor(private readonly materialsService: MaterialsService) {}
 
   @Get('product/:productId')
-  async findProductBom(@Param('productId', ParseUUIDPipe) productId: string) {
-    return this.materialsService.findProductBom(productId);
+  async findProductBom(
+    @Param('productId', ParseUUIDPipe) productId: string,
+    @CurrentUser() user: any
+  ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.findProductBom(productId, user.storeId);
   }
 
   @Post('batch/products')
-  async findMultipleProductsBom(@Body() data: { productIds: string[] }) {
-    return this.materialsService.findMultipleProductsBom(data.productIds);
+  async findMultipleProductsBom(
+    @Body() data: { productIds: string[] },
+    @CurrentUser() user: any
+  ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.findMultipleProductsBom(data.productIds, user.storeId);
   }
 
   @Post()
-  async createBomItem(@Body() data: CreateProductBomDto) {
-    return this.materialsService.createBomItem(data);
+  async createBomItem(@Body() data: CreateProductBomDto, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.createBomItem(data, user.storeId);
   }
 
   @Post('batch')
-  async createBomItemsBatch(@Body() data: CreateProductBomDto[]) {
-    return this.materialsService.createBomItemsBatch(data);
+  async createBomItemsBatch(@Body() data: CreateProductBomDto[], @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.createBomItemsBatch(data, user.storeId);
   }
 
   @Put(':id')
   async updateBomItem(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() data: UpdateProductBomDto
+    @Body() data: UpdateProductBomDto,
+    @CurrentUser() user: any
   ) {
-    return this.materialsService.updateBomItem(id, data);
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.updateBomItem(id, data, user.storeId);
   }
 
   @Delete(':id')
-  async deleteBomItem(@Param('id', ParseUUIDPipe) id: string) {
-    await this.materialsService.deleteBomItem(id);
+  async deleteBomItem(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    await this.materialsService.deleteBomItem(id, user.storeId);
     return { message: 'BOM item deleted successfully' };
   }
 
   @Post('scale-recipe')
-  async scaleRecipe(@Body() data: ScaleRecipeDto) {
-    return this.materialsService.scaleRecipe(data);
+  async scaleRecipe(@Body() data: ScaleRecipeDto, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.materialsService.scaleRecipe(data, user.storeId);
   }
 }
 

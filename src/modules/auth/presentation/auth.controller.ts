@@ -7,6 +7,14 @@ export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
   @Public()
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  async register(@Body() registerDto: { name: string; email: string; password: string }) {
+    console.log('Tentativa de registro para:', registerDto.email);
+    return this.authService.register(registerDto.name, registerDto.email, registerDto.password);
+  }
+
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: { email: string; password: string }) {

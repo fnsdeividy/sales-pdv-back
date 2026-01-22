@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@modules/prisma/prisma.service';
 import { Sale, SaleItem } from '@modules/sales/entities/sale.entity';
 import { ISalesRepository } from '@modules/sales/presentation/interfaces/sales.interface';
@@ -7,11 +7,18 @@ import { ISalesRepository } from '@modules/sales/presentation/interfaces/sales.i
 export class SalesRepository implements ISalesRepository {
   constructor(private readonly prisma: PrismaService) { }
 
-  async findAll(page: number, limit: number): Promise<{ sales: Sale[]; total: number; totalPages: number }> {
+  async findAll(page: number, limit: number, storeId?: string): Promise<{ sales: Sale[]; total: number; totalPages: number }> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const skip = (page - 1) * limit;
 
     const [sales, total] = await Promise.all([
       this.prisma.order.findMany({
+        where: {
+          storeId: storeId,
+        },
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -21,7 +28,11 @@ export class SalesRepository implements ISalesRepository {
           store: true,
         },
       }),
-      this.prisma.order.count(),
+      this.prisma.order.count({
+        where: {
+          storeId: storeId,
+        },
+      }),
     ]);
 
     const totalPages = Math.ceil(total / limit);
@@ -33,9 +44,16 @@ export class SalesRepository implements ISalesRepository {
     };
   }
 
-  async findById(id: string): Promise<Sale | null> {
-    const order = await this.prisma.order.findUnique({
-      where: { id },
+  async findById(id: string, storeId?: string): Promise<Sale | null> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id,
+        storeId: storeId,
+      },
       include: {
         orderItems: true,
         customer: true,
@@ -46,9 +64,16 @@ export class SalesRepository implements ISalesRepository {
     return order ? this.mapPrismaOrderToSale(order) : null;
   }
 
-  async findByOrderNumber(orderNumber: string): Promise<Sale | null> {
-    const order = await this.prisma.order.findUnique({
-      where: { orderNumber },
+  async findByOrderNumber(orderNumber: string, storeId?: string): Promise<Sale | null> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        orderNumber,
+        storeId: storeId,
+      },
       include: {
         orderItems: true,
         customer: true,
@@ -59,12 +84,19 @@ export class SalesRepository implements ISalesRepository {
     return order ? this.mapPrismaOrderToSale(order) : null;
   }
 
-  async findByCustomerId(customerId: string, page: number, limit: number): Promise<{ sales: Sale[]; total: number; totalPages: number }> {
+  async findByCustomerId(customerId: string, page: number, limit: number, storeId?: string): Promise<{ sales: Sale[]; total: number; totalPages: number }> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const skip = (page - 1) * limit;
 
     const [sales, total] = await Promise.all([
       this.prisma.order.findMany({
-        where: { customerId },
+        where: {
+          customerId,
+          storeId: storeId,
+        },
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -74,7 +106,12 @@ export class SalesRepository implements ISalesRepository {
           store: true,
         },
       }),
-      this.prisma.order.count({ where: { customerId } }),
+      this.prisma.order.count({
+        where: {
+          customerId,
+          storeId: storeId,
+        },
+      }),
     ]);
 
     const totalPages = Math.ceil(total / limit);
@@ -125,6 +162,21 @@ export class SalesRepository implements ISalesRepository {
         return sum + itemTotal;
       }, 0);
     }
+
+    // Verificar se o storeId foi fornecido e existe
+    if (!data.storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const storeExists = await this.prisma.store.findUnique({
+      where: { id: data.storeId }
+    });
+
+    if (!storeExists) {
+      throw new NotFoundException(`Store with ID ${data.storeId} not found`);
+    }
+
+    const storeId = data.storeId;
 
     // Criar ou encontrar cliente baseado nos dados fornecidos
     let customerId = '4F461257-2F49-4667-83E4-A9510DDAE575'; // Cliente padrão como fallback
@@ -180,22 +232,13 @@ export class SalesRepository implements ISalesRepository {
             email: data.customerEmail || null,
             phone: data.customerPhone || null,
             isActive: true,
-          }
+            store: {
+              connect: { id: storeId },
+            },
+          },
         });
         customerId = newCustomer.id;
         console.log(`Created new customer: ${newCustomer.firstName} ${newCustomer.lastName}`);
-      }
-    }
-
-    // Verificar se o storeId existe, senão usar o padrão
-    let storeId = data.storeId || 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33';
-    if (data.storeId) {
-      const storeExists = await this.prisma.store.findUnique({
-        where: { id: data.storeId }
-      });
-      if (!storeExists) {
-        console.warn(`Store with ID ${data.storeId} not found, using default store`);
-        storeId = 'c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33';
       }
     }
 

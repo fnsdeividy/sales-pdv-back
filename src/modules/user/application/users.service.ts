@@ -8,8 +8,11 @@ import * as bcrypt from 'bcryptjs';
 export class UsersService {
   constructor(private prisma: PrismaService) { }
 
-  async findAll(): Promise<User[]> {
+  async findAll(storeId: string): Promise<User[]> {
     const users = await this.prisma.user.findMany({
+      where: {
+        storeId: storeId,
+      },
       select: {
         id: true,
         email: true,
@@ -18,6 +21,7 @@ export class UsersService {
         phone: true,
         isActive: true,
         emailVerified: true,
+        storeId: true,
         createdAt: true,
         updatedAt: true,
       }
@@ -27,15 +31,18 @@ export class UsersService {
       ...user,
       name: `${user.firstName} ${user.lastName}`,
       role: 'user', // Valor padrão para compatibilidade com frontend
-      storeId: undefined, // Valor padrão para compatibilidade com frontend
+      storeId: user.storeId || undefined,
       status: user.isActive ? 'active' : 'inactive', // Converter isActive para status
       lastLogin: user.updatedAt, // Usar updatedAt como lastLogin temporariamente
     })) as User[];
   }
 
-  async findOne(id: string): Promise<User> {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
+  async findOne(id: string, storeId: string): Promise<User> {
+    const user = await this.prisma.user.findFirst({
+      where: { 
+        id,
+        storeId: storeId, // Garantir que o usuário pertence à mesma loja
+      },
       select: {
         id: true,
         email: true,
@@ -44,28 +51,29 @@ export class UsersService {
         phone: true,
         isActive: true,
         emailVerified: true,
+        storeId: true,
         createdAt: true,
         updatedAt: true,
       }
     });
 
     if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+      throw new NotFoundException(`User with ID ${id} not found or does not belong to your store`);
     }
 
     return {
       ...user,
       name: `${user.firstName} ${user.lastName}`,
       role: 'user', // Valor padrão para compatibilidade com frontend
-      storeId: undefined, // Valor padrão para compatibilidade com frontend
+      storeId: user.storeId || undefined,
       status: user.isActive ? 'active' : 'inactive', // Converter isActive para status
       lastLogin: user.updatedAt, // Usar updatedAt como lastLogin temporariamente
     } as User;
   }
 
-  async create(data: CreateUserDto): Promise<User> {
+  async create(data: CreateUserDto, storeId: string): Promise<User> {
     // Extrair campos que não existem no modelo User
-    const { role, storeId, password, ...userData } = data;
+    const { role, password, ...userData } = data;
 
     // Hash da senha antes de salvar
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -74,6 +82,7 @@ export class UsersService {
       data: {
         ...userData,
         password: hashedPassword,
+        storeId: storeId, // Usar o storeId do usuário autenticado
         isActive: true,
         emailVerified: false,
       },
@@ -85,6 +94,7 @@ export class UsersService {
         phone: true,
         isActive: true,
         emailVerified: true,
+        storeId: true,
         createdAt: true,
         updatedAt: true,
       }
@@ -94,17 +104,18 @@ export class UsersService {
       ...user,
       name: `${user.firstName} ${user.lastName}`,
       role: role || 'user', // Manter role para compatibilidade com frontend
-      storeId: storeId, // Manter storeId para compatibilidade com frontend
+      storeId: user.storeId || undefined,
       status: user.isActive ? 'active' : 'inactive', // Converter isActive para status
       lastLogin: user.updatedAt, // Usar updatedAt como lastLogin temporariamente
     } as User;
   }
 
-  async update(id: string, data: UpdateUserDto): Promise<User> {
-    const user = await this.findOne(id);
+  async update(id: string, data: UpdateUserDto, storeId: string): Promise<User> {
+    // Verificar se o usuário pertence à mesma loja antes de atualizar
+    await this.findOne(id, storeId);
 
     // Extrair campos que não existem no modelo User
-    const { role, storeId, password, ...userData } = data;
+    const { role, password, ...userData } = data;
 
     // Preparar dados para atualização
     let updateData: any = userData;
@@ -116,7 +127,9 @@ export class UsersService {
     }
 
     const updatedUser = await this.prisma.user.update({
-      where: { id },
+      where: { 
+        id, // findUnique só aceita campos únicos, então usamos apenas id
+      },
       data: updateData,
       select: {
         id: true,
@@ -126,25 +139,34 @@ export class UsersService {
         phone: true,
         isActive: true,
         emailVerified: true,
+        storeId: true,
         createdAt: true,
         updatedAt: true,
       }
     });
 
+    // Verificar se o usuário atualizado pertence à mesma loja
+    if (updatedUser.storeId !== storeId) {
+      throw new NotFoundException(`User with ID ${id} does not belong to your store`);
+    }
+
     return {
       ...updatedUser,
       name: `${updatedUser.firstName} ${updatedUser.lastName}`,
       role: role || 'user', // Manter role para compatibilidade com frontend
-      storeId: storeId, // Manter storeId para compatibilidade com frontend
+      storeId: updatedUser.storeId || undefined,
       status: updatedUser.isActive ? 'active' : 'inactive', // Converter isActive para status
       lastLogin: updatedUser.updatedAt, // Usar updatedAt como lastLogin temporariamente
     } as User;
   }
 
-  async remove(id: string): Promise<void> {
-    await this.findOne(id);
+  async remove(id: string, storeId: string): Promise<void> {
+    // Verificar se o usuário pertence à mesma loja antes de remover
+    await this.findOne(id, storeId);
     await this.prisma.user.delete({
-      where: { id }
+      where: { 
+        id, // findUnique só aceita campos únicos, então usamos apenas id
+      }
     });
   }
 

@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { CustomerService } from '../application/customer.service';
+import { CurrentUser } from '../../../shared/decorators/current-user.decorator';
 
 @Controller('customers')
 export class CustomerController {
@@ -20,6 +21,7 @@ export class CustomerController {
 
   @Get()
   async findAll(
+    @CurrentUser() user: any,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '20',
     @Query('search') search?: string,
@@ -29,6 +31,10 @@ export class CustomerController {
     @Query('hasEmail') hasEmail?: string,
     @Query('hasPhone') hasPhone?: string,
   ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
 
@@ -41,68 +47,103 @@ export class CustomerController {
       hasPhone: hasPhone !== undefined ? hasPhone === 'true' : undefined,
     };
 
-    return this.customerService.findAll(pageNum, limitNum, filters);
+    return this.customerService.findAll(pageNum, limitNum, filters, user.storeId);
   }
 
   @Get('statistics')
-  async getStatistics() {
-    return this.customerService.getStatistics();
+  async getStatistics(@CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.customerService.getStatistics(user.storeId);
   }
 
   @Get(':id')
-  async findById(@Param('id') id: string) {
-    return this.customerService.findById(id);
+  async findById(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.customerService.findById(id, user.storeId);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() createCustomerDto: any) {
-    return this.customerService.create(createCustomerDto);
+  async create(@Body() createCustomerDto: any, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado e use o do usuário autenticado
+    delete createCustomerDto.storeId;
+    return this.customerService.create(createCustomerDto, user.storeId);
   }
 
   @Put(':id')
   async update(
     @Param('id') id: string,
     @Body() updateCustomerDto: any,
+    @CurrentUser() user: any,
   ) {
-    return this.customerService.update(id, updateCustomerDto);
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    // Garantir que o storeId do body seja ignorado e use o do usuário autenticado
+    delete updateCustomerDto.storeId;
+    return this.customerService.update(id, updateCustomerDto, user.storeId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string) {
-    return this.customerService.delete(id);
+  async delete(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.customerService.delete(id, user.storeId);
   }
 
   @Post(':id/activate')
-  async activate(@Param('id') id: string) {
-    return this.customerService.activate(id);
+  async activate(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.customerService.activate(id, user.storeId);
   }
 
   @Post(':id/deactivate')
-  async deactivate(@Param('id') id: string) {
-    return this.customerService.deactivate(id);
+  async deactivate(@Param('id') id: string, @CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.customerService.deactivate(id, user.storeId);
   }
 
   @Get(':id/orders')
   async getCustomerOrders(
     @Param('id') id: string,
+    @CurrentUser() user: any,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
   ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
-    return this.customerService.getCustomerOrders(id, pageNum, limitNum);
+    return this.customerService.getCustomerOrders(id, pageNum, limitNum, user.storeId);
   }
 
   @Get('export/csv')
   async exportToCSV(
     @Res() res: Response,
+    @CurrentUser() user: any,
     @Query('search') search?: string,
     @Query('isActive') isActive?: string,
     @Query('city') city?: string,
     @Query('state') state?: string,
   ) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+
     const filters = {
       search,
       isActive: isActive ? isActive === 'true' : undefined,
@@ -110,7 +151,7 @@ export class CustomerController {
       state,
     };
 
-    const csvData = await this.customerService.exportToCSV(filters);
+    const csvData = await this.customerService.exportToCSV(filters, user.storeId);
 
     const fileName = `clientes-${new Date().toISOString().split('T')[0]}.csv`;
 

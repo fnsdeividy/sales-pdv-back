@@ -21,11 +21,21 @@ export class MaterialsService {
   ) { }
 
   // Materials CRUD
-  async findAllMaterials() {
+  async findAllMaterials(storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     return this.prisma.material.findMany({
+      where: {
+        storeId: storeId, // Filtro obrigatório por loja
+      },
       include: {
         batches: {
-          where: { status: { not: BatchStatus.consumed } },
+          where: { 
+            status: { not: BatchStatus.consumed },
+            storeId: storeId,
+          },
           orderBy: { receivedAt: 'asc' },
         },
         bomItems: true,
@@ -34,9 +44,14 @@ export class MaterialsService {
     });
   }
 
-  async findMaterialById(id: string) {
-    const material = await this.prisma.material.findUnique({
-      where: { id },
+  async findMaterialById(id: string, storeId?: string) {
+    const where: any = { id };
+    if (storeId) {
+      where.storeId = storeId; // Filtro por loja quando fornecido
+    }
+
+    const material = await this.prisma.material.findFirst({
+      where,
       include: {
         batches: {
           orderBy: { receivedAt: 'asc' },
@@ -51,15 +66,22 @@ export class MaterialsService {
     });
 
     if (!material) {
-      throw new NotFoundException(`Material with ID ${id} not found`);
+      throw new NotFoundException(`Material with ID ${id} not found${storeId ? ' in your store' : ''}`);
     }
 
     return material;
   }
 
-  async createMaterial(data: CreateMaterialDto) {
+  async createMaterial(data: CreateMaterialDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     return this.prisma.material.create({
-      data,
+      data: {
+        ...data,
+        storeId: storeId, // Sempre usar o storeId do usuário autenticado
+      },
       include: {
         batches: true,
         bomItems: true,
@@ -68,12 +90,20 @@ export class MaterialsService {
     });
   }
 
-  async updateMaterial(id: string, data: UpdateMaterialDto) {
-    await this.findMaterialById(id);
+  async updateMaterial(id: string, data: UpdateMaterialDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    await this.findMaterialById(id, storeId);
+
+    // Garantir que storeId não seja alterado
+    const updateData = { ...data };
+    delete (updateData as any).storeId;
 
     return this.prisma.material.update({
       where: { id },
-      data,
+      data: updateData,
       include: {
         batches: true,
         bomItems: true,
@@ -82,8 +112,12 @@ export class MaterialsService {
     });
   }
 
-  async deleteMaterial(id: string): Promise<void> {
-    await this.findMaterialById(id);
+  async deleteMaterial(id: string, storeId: string): Promise<void> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    await this.findMaterialById(id, storeId);
 
     // Check if material is used in any BOM
     const bomCount = await this.prisma.productBom.count({
@@ -114,9 +148,19 @@ export class MaterialsService {
   }
 
   // Material Batches CRUD
-  async findMaterialBatches(materialId: string) {
+  async findMaterialBatches(materialId: string, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    // Verificar se o material pertence à loja
+    await this.findMaterialById(materialId, storeId);
+
     return this.prisma.materialBatch.findMany({
-      where: { materialId },
+      where: { 
+        materialId,
+        storeId: storeId, // Filtro obrigatório por loja
+      },
       include: {
         material: true,
         consumptions: true,
@@ -125,9 +169,14 @@ export class MaterialsService {
     });
   }
 
-  async findBatchById(id: string) {
-    const batch = await this.prisma.materialBatch.findUnique({
-      where: { id },
+  async findBatchById(id: string, storeId?: string) {
+    const where: any = { id };
+    if (storeId) {
+      where.storeId = storeId;
+    }
+
+    const batch = await this.prisma.materialBatch.findFirst({
+      where,
       include: {
         material: true,
         consumptions: true,
@@ -135,15 +184,19 @@ export class MaterialsService {
     });
 
     if (!batch) {
-      throw new NotFoundException(`Material batch with ID ${id} not found`);
+      throw new NotFoundException(`Material batch with ID ${id} not found${storeId ? ' in your store' : ''}`);
     }
 
     return batch;
   }
 
-  async createMaterialBatch(data: CreateMaterialBatchDto) {
-    // Verify material exists
-    await this.findMaterialById(data.materialId);
+  async createMaterialBatch(data: CreateMaterialBatchDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    // Verify material exists and belongs to the store
+    await this.findMaterialById(data.materialId, storeId);
 
     // Calculate total cost
     const totalCost = data.qty * data.unitCost;
@@ -152,6 +205,7 @@ export class MaterialsService {
       data: {
         ...data,
         totalCost,
+        storeId: storeId, // Sempre usar o storeId do usuário autenticado
         receivedAt: new Date(data.receivedAt),
         expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
       },
@@ -162,8 +216,12 @@ export class MaterialsService {
     });
   }
 
-  async updateMaterialBatch(id: string, data: UpdateMaterialBatchDto) {
-    const batch = await this.findBatchById(id);
+  async updateMaterialBatch(id: string, data: UpdateMaterialBatchDto, storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const batch = await this.findBatchById(id, storeId);
 
     // Recalculate total cost if qty or unitCost changed
     const updateData: any = { ...data };
@@ -181,6 +239,9 @@ export class MaterialsService {
       updateData.expiryDate = new Date(data.expiryDate);
     }
 
+    // Garantir que storeId não seja alterado
+    delete updateData.storeId;
+
     return this.prisma.materialBatch.update({
       where: { id },
       data: updateData,
@@ -191,8 +252,12 @@ export class MaterialsService {
     });
   }
 
-  async deleteMaterialBatch(id: string): Promise<void> {
-    const batch = await this.findBatchById(id);
+  async deleteMaterialBatch(id: string, storeId: string): Promise<void> {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const batch = await this.findBatchById(id, storeId);
 
     if (batch.status === BatchStatus.consumed) {
       throw new BadRequestException('Cannot delete consumed batch');
@@ -213,9 +278,24 @@ export class MaterialsService {
   }
 
   // Product BOM (Bill of Materials) CRUD
-  async findProductBom(productId: string) {
+  async findProductBom(productId: string, storeId?: string) {
+    const where: any = { productId };
+    
+    // Se storeId fornecido, verificar se o produto pertence à loja
+    if (storeId) {
+      const product = await this.prisma.product.findFirst({
+        where: {
+          id: productId,
+          storeId: storeId,
+        },
+      });
+      if (!product) {
+        throw new NotFoundException(`Product with ID ${productId} not found in your store`);
+      }
+    }
+
     return this.prisma.productBom.findMany({
-      where: { productId },
+      where,
       include: {
         material: true,
         product: true,
@@ -224,7 +304,7 @@ export class MaterialsService {
     });
   }
 
-  async findMultipleProductsBom(productIds: string[]) {
+  async findMultipleProductsBom(productIds: string[], storeId?: string) {
     // Filter valid UUIDs to avoid database errors
     const validProductIds = productIds.filter(id => {
       try {
@@ -239,10 +319,27 @@ export class MaterialsService {
       return {};
     }
 
+    // Se storeId fornecido, filtrar apenas produtos da loja
+    let filteredProductIds = validProductIds;
+    if (storeId) {
+      const products = await this.prisma.product.findMany({
+        where: {
+          id: { in: validProductIds },
+          storeId: storeId,
+        },
+        select: { id: true },
+      });
+      filteredProductIds = products.map(p => p.id);
+    }
+
+    if (filteredProductIds.length === 0) {
+      return {};
+    }
+
     const bomItems = await this.prisma.productBom.findMany({
       where: { 
         productId: { 
-          in: validProductIds 
+          in: filteredProductIds 
         } 
       },
       include: {
@@ -264,17 +361,22 @@ export class MaterialsService {
     return groupedBom;
   }
 
-  async createBomItem(data: CreateProductBomDto) {
-    // Verify product exists
-    const product = await this.prisma.product.findUnique({
-      where: { id: data.productId },
-    });
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${data.productId} not found`);
+  async createBomItem(data: CreateProductBomDto, storeId?: string) {
+    // Verify product exists (and belongs to store if storeId provided)
+    const productWhere: any = { id: data.productId };
+    if (storeId) {
+      productWhere.storeId = storeId;
     }
 
-    // Verify material exists
-    await this.findMaterialById(data.materialId);
+    const product = await this.prisma.product.findFirst({
+      where: productWhere,
+    });
+    if (!product) {
+      throw new NotFoundException(`Product with ID ${data.productId} not found${storeId ? ' in your store' : ''}`);
+    }
+
+    // Verify material exists (and belongs to store if storeId provided)
+    await this.findMaterialById(data.materialId, storeId);
 
     return this.prisma.productBom.create({
       data: {
@@ -288,19 +390,24 @@ export class MaterialsService {
     });
   }
 
-  async createBomItemsBatch(items: CreateProductBomDto[]) {
+  async createBomItemsBatch(items: CreateProductBomDto[], storeId?: string) {
     // Validate all items first
     for (const item of items) {
-      // Verify product exists
-      const product = await this.prisma.product.findUnique({
-        where: { id: item.productId },
-      });
-      if (!product) {
-        throw new NotFoundException(`Product with ID ${item.productId} not found`);
+      // Verify product exists (and belongs to store if storeId provided)
+      const productWhere: any = { id: item.productId };
+      if (storeId) {
+        productWhere.storeId = storeId;
       }
 
-      // Verify material exists
-      await this.findMaterialById(item.materialId);
+      const product = await this.prisma.product.findFirst({
+        where: productWhere,
+      });
+      if (!product) {
+        throw new NotFoundException(`Product with ID ${item.productId} not found${storeId ? ' in your store' : ''}`);
+      }
+
+      // Verify material exists (and belongs to store if storeId provided)
+      await this.findMaterialById(item.materialId, storeId);
     }
 
     // Create all items in a transaction
@@ -323,7 +430,7 @@ export class MaterialsService {
     });
   }
 
-  async updateBomItem(id: string, data: UpdateProductBomDto) {
+  async updateBomItem(id: string, data: UpdateProductBomDto, storeId?: string) {
     const bomItem = await this.prisma.productBom.findUnique({
       where: { id },
       include: {
@@ -334,6 +441,11 @@ export class MaterialsService {
 
     if (!bomItem) {
       throw new NotFoundException(`BOM item with ID ${id} not found`);
+    }
+
+    // Verificar se o produto pertence à loja
+    if (storeId && bomItem.product.storeId !== storeId) {
+      throw new NotFoundException(`BOM item with ID ${id} not found in your store`);
     }
 
     return this.prisma.productBom.update({
@@ -346,33 +458,46 @@ export class MaterialsService {
     });
   }
 
-  async deleteBomItem(id: string): Promise<void> {
+  async deleteBomItem(id: string, storeId?: string): Promise<void> {
     const bomItem = await this.prisma.productBom.findUnique({
       where: { id },
+      include: {
+        product: true,
+      },
     });
 
     if (!bomItem) {
       throw new NotFoundException(`BOM item with ID ${id} not found`);
     }
 
+    // Verificar se o produto pertence à loja
+    if (storeId && bomItem.product.storeId !== storeId) {
+      throw new NotFoundException(`BOM item with ID ${id} not found in your store`);
+    }
+
     await this.prisma.productBom.delete({ where: { id } });
   }
 
   // Recipe scaling
-  async scaleRecipe(data: ScaleRecipeDto) {
-    const bom = await this.findProductBom(data.productId);
+  async scaleRecipe(data: ScaleRecipeDto, storeId?: string) {
+    const bom = await this.findProductBom(data.productId, storeId);
 
     if (bom.length === 0) {
       throw new NotFoundException(`No recipe found for product ${data.productId}`);
     }
 
     // Get product info to determine base recipe size
-    const product = await this.prisma.product.findUnique({
-      where: { id: data.productId },
+    const productWhere: any = { id: data.productId };
+    if (storeId) {
+      productWhere.storeId = storeId;
+    }
+
+    const product = await this.prisma.product.findFirst({
+      where: productWhere,
     });
 
     if (!product) {
-      throw new NotFoundException(`Product with ID ${data.productId} not found`);
+      throw new NotFoundException(`Product with ID ${data.productId} not found${storeId ? ' in your store' : ''}`);
     }
 
     // Assume base recipe is for 100 units of the product's base unit
@@ -424,16 +549,21 @@ export class MaterialsService {
   }
 
   // Material availability check
-  async checkMaterialAvailability(materialId: string, requiredQty: number, requiredUnit: Unit) {
-    const material = await this.findMaterialById(materialId);
+  async checkMaterialAvailability(materialId: string, requiredQty: number, requiredUnit: Unit, storeId?: string) {
+    const material = await this.findMaterialById(materialId, storeId);
 
     // Get all available batches
+    const batchWhere: any = {
+      materialId,
+      status: BatchStatus.available,
+      qty: { gt: 0 },
+    };
+    if (storeId) {
+      batchWhere.storeId = storeId;
+    }
+
     const availableBatches = await this.prisma.materialBatch.findMany({
-      where: {
-        materialId,
-        status: BatchStatus.available,
-        qty: { gt: 0 },
-      },
+      where: batchWhere,
       orderBy: { receivedAt: 'asc' }, // FIFO order
     });
 
@@ -476,11 +606,21 @@ export class MaterialsService {
   }
 
   // Get low stock materials
-  async getLowStockMaterials() {
+  async getLowStockMaterials(storeId: string) {
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
     const materials = await this.prisma.material.findMany({
+      where: {
+        storeId: storeId, // Filtro obrigatório por loja
+      },
       include: {
         batches: {
-          where: { status: BatchStatus.available },
+          where: { 
+            status: BatchStatus.available,
+            storeId: storeId,
+          },
         },
       },
     });
