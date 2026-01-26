@@ -14,18 +14,22 @@ async function bootstrap() {
   // Configuração de CORS para permitir requisições do frontend
   app.enableCors({
     origin: [
+      // Desenvolvimento local
       'http://localhost:5173',
       'http://localhost:5174',
       'http://localhost:5175',
       'http://localhost:3000',
       'http://localhost:4173',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000',
       // Produção - domínios Vercel específicos
-      'https://rosy-sales-flow.vercel.app',
-      'https://cloro-pdv.vercel.app',
-      'https://produtos-limpeza-pdv.vercel.app',
-      'https://rosy-sales-flow-git-main.vercel.app',
+      // Produção - domínio principal
+      'https://www.pdv-ai.com.br',
+      'https://pdv-ai.com.br',
       // Permitir qualquer subdomínio da Vercel durante desenvolvimento
       /^https:\/\/.*\.vercel\.app$/,
+      // Render backend (para permitir requisições do frontend para o próprio backend)
+      /^https:\/\/.*\.onrender\.com$/,
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
