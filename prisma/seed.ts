@@ -19,17 +19,17 @@ async function main() {
     },
   });
 
-  // Criar usuário admin - Cassio
+  // Criar usuário admin - Teste
   const hashedPassword = await bcrypt.hash('admin123', 10);
   const adminUser1 = await prisma.user.upsert({
-    where: { email: 'cassiobrr@gmail.com' },
+    where: { email: 'teste@gmail.com' },
     update: {
       storeId: mainStore.id,
     },
     create: {
-      email: 'cassiobrr@gmail.com',
+      email: 'teste@gmail.com',
       password: hashedPassword,
-      firstName: 'Cassio',
+      firstName: 'Teste',
       lastName: 'Admin',
       isActive: true,
       emailVerified: true,
@@ -301,7 +301,7 @@ async function main() {
 
   console.log('Seed completed successfully');
   console.log('Admin users:');
-  console.log('  - cassiobrr@gmail.com / admin123');
+  console.log('  - teste@gmail.com / admin123');
   console.log('  - cristianosenna79@gmail.com / admin123');
   console.log('Test user: test@example.com / test123');
   console.log('Cashier user: caixa@example.com / caixa123');
