@@ -22,6 +22,7 @@ import { UserModule } from './modules/user/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ProductionModule } from './modules/production/production.module';
 import { CustomerModule } from './modules/customer/customer.module';
+import { SubscriptionModule } from './modules/subscription/subscription.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { CustomerModule } from './modules/customer/customer.module';
     AuthModule,
     ProductionModule,
     CustomerModule,
+    SubscriptionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

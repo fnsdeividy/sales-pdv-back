@@ -24,17 +24,39 @@ export class UsersService {
         storeId: true,
         createdAt: true,
         updatedAt: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       }
     });
 
-    return users.map(user => ({
-      ...user,
-      name: `${user.firstName} ${user.lastName}`,
-      role: 'user', // Valor padrão para compatibilidade com frontend
-      storeId: user.storeId || undefined,
-      status: user.isActive ? 'active' : 'inactive', // Converter isActive para status
-      lastLogin: user.updatedAt, // Usar updatedAt como lastLogin temporariamente
-    })) as User[];
+    return users.map(user => {
+      const roles = user.userRoles.map(ur => ur.role.name);
+      const primaryRole = roles.length > 0 ? roles[0] : 'user';
+
+      return {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        isActive: user.isActive,
+        emailVerified: user.emailVerified,
+        storeId: user.storeId || undefined,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        name: `${user.firstName} ${user.lastName}`,
+        role: primaryRole,
+        status: user.isActive ? 'active' : 'inactive',
+        lastLogin: user.updatedAt,
+      };
+    }) as User[];
   }
 
   async findOne(id: string, storeId: string): Promise<User> {
@@ -54,6 +76,15 @@ export class UsersService {
         storeId: true,
         createdAt: true,
         updatedAt: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       }
     });
 
@@ -61,13 +92,24 @@ export class UsersService {
       throw new NotFoundException(`User with ID ${id} not found or does not belong to your store`);
     }
 
+    const roles = user.userRoles.map(ur => ur.role.name);
+    const primaryRole = roles.length > 0 ? roles[0] : 'user';
+
     return {
-      ...user,
-      name: `${user.firstName} ${user.lastName}`,
-      role: 'user', // Valor padrão para compatibilidade com frontend
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone,
+      isActive: user.isActive,
+      emailVerified: user.emailVerified,
       storeId: user.storeId || undefined,
-      status: user.isActive ? 'active' : 'inactive', // Converter isActive para status
-      lastLogin: user.updatedAt, // Usar updatedAt como lastLogin temporariamente
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      name: `${user.firstName} ${user.lastName}`,
+      role: primaryRole,
+      status: user.isActive ? 'active' : 'inactive',
+      lastLogin: user.updatedAt,
     } as User;
   }
 
@@ -100,10 +142,35 @@ export class UsersService {
       }
     });
 
+    // Associar role ao usuário
+    const roleName = role || 'user';
+    let roleRecord = await this.prisma.role.findUnique({
+      where: { name: roleName },
+    });
+
+    // Se o role não existir, criar
+    if (!roleRecord) {
+      roleRecord = await this.prisma.role.create({
+        data: {
+          name: roleName,
+          description: `Role ${roleName}`,
+          isSystem: false,
+        },
+      });
+    }
+
+    // Criar associação UserRole
+    await this.prisma.userRole.create({
+      data: {
+        userId: user.id,
+        roleId: roleRecord.id,
+      },
+    });
+
     return {
       ...user,
       name: `${user.firstName} ${user.lastName}`,
-      role: role || 'user', // Manter role para compatibilidade com frontend
+      role: roleName,
       storeId: user.storeId || undefined,
       status: user.isActive ? 'active' : 'inactive', // Converter isActive para status
       lastLogin: user.updatedAt, // Usar updatedAt como lastLogin temporariamente
@@ -142,6 +209,15 @@ export class UsersService {
         storeId: true,
         createdAt: true,
         updatedAt: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       }
     });
 
@@ -150,13 +226,71 @@ export class UsersService {
       throw new NotFoundException(`User with ID ${id} does not belong to your store`);
     }
 
+    // Se um role foi fornecido, atualizar a associação
+    if (role) {
+      // Remover associações antigas
+      await this.prisma.userRole.deleteMany({
+        where: { userId: id },
+      });
+
+      // Buscar ou criar o role
+      let roleRecord = await this.prisma.role.findUnique({
+        where: { name: role },
+      });
+
+      if (!roleRecord) {
+        roleRecord = await this.prisma.role.create({
+          data: {
+            name: role,
+            description: `Role ${role}`,
+            isSystem: false,
+          },
+        });
+      }
+
+      // Criar nova associação
+      await this.prisma.userRole.create({
+        data: {
+          userId: id,
+          roleId: roleRecord.id,
+        },
+      });
+    }
+
+    // Buscar roles atualizados
+    const userWithRoles = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const roles = userWithRoles?.userRoles.map(ur => ur.role.name) || [];
+    const primaryRole = roles.length > 0 ? roles[0] : 'user';
+
     return {
-      ...updatedUser,
-      name: `${updatedUser.firstName} ${updatedUser.lastName}`,
-      role: role || 'user', // Manter role para compatibilidade com frontend
+      id: updatedUser.id,
+      email: updatedUser.email,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      phone: updatedUser.phone,
+      isActive: updatedUser.isActive,
+      emailVerified: updatedUser.emailVerified,
       storeId: updatedUser.storeId || undefined,
-      status: updatedUser.isActive ? 'active' : 'inactive', // Converter isActive para status
-      lastLogin: updatedUser.updatedAt, // Usar updatedAt como lastLogin temporariamente
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
+      name: `${updatedUser.firstName} ${updatedUser.lastName}`,
+      role: primaryRole,
+      status: updatedUser.isActive ? 'active' : 'inactive',
+      lastLogin: updatedUser.updatedAt,
     } as User;
   }
 
@@ -168,6 +302,108 @@ export class UsersService {
         id, // findUnique só aceita campos únicos, então usamos apenas id
       }
     });
+  }
+
+  async activate(id: string, storeId: string): Promise<User> {
+    // Verificar se o usuário pertence à mesma loja
+    await this.findOne(id, storeId);
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id },
+      data: { isActive: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        isActive: true,
+        emailVerified: true,
+        storeId: true,
+        createdAt: true,
+        updatedAt: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      }
+    });
+
+    const roles = updatedUser.userRoles.map(ur => ur.role.name);
+    const primaryRole = roles.length > 0 ? roles[0] : 'user';
+
+    return {
+      id: updatedUser.id,
+      email: updatedUser.email,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      phone: updatedUser.phone,
+      isActive: updatedUser.isActive,
+      emailVerified: updatedUser.emailVerified,
+      storeId: updatedUser.storeId || undefined,
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
+      name: `${updatedUser.firstName} ${updatedUser.lastName}`,
+      role: primaryRole,
+      status: 'active',
+      lastLogin: updatedUser.updatedAt,
+    } as User;
+  }
+
+  async deactivate(id: string, storeId: string): Promise<User> {
+    // Verificar se o usuário pertence à mesma loja
+    await this.findOne(id, storeId);
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id },
+      data: { isActive: false },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        isActive: true,
+        emailVerified: true,
+        storeId: true,
+        createdAt: true,
+        updatedAt: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      }
+    });
+
+    const roles = updatedUser.userRoles.map(ur => ur.role.name);
+    const primaryRole = roles.length > 0 ? roles[0] : 'user';
+
+    return {
+      id: updatedUser.id,
+      email: updatedUser.email,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      phone: updatedUser.phone,
+      isActive: updatedUser.isActive,
+      emailVerified: updatedUser.emailVerified,
+      storeId: updatedUser.storeId || undefined,
+      createdAt: updatedUser.createdAt,
+      updatedAt: updatedUser.updatedAt,
+      name: `${updatedUser.firstName} ${updatedUser.lastName}`,
+      role: primaryRole,
+      status: 'inactive',
+      lastLogin: updatedUser.updatedAt,
+    } as User;
   }
 
   // Método para atualizar senhas em texto plano existentes para hash
