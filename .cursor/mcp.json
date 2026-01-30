@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "postgresql-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@henkey/postgres-mcp-server",
+        "--connection-string",
+        "postgresql://cloro_user:cloro_password@localhost:5434/cloro_db"
+      ]
+    }
+  }
+}

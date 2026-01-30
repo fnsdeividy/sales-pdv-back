@@ -23,6 +23,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ProductionModule } from './modules/production/production.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { InvoiceModule } from './modules/invoice/invoice.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { SubscriptionModule } from './modules/subscription/subscription.module';
     ProductionModule,
     CustomerModule,
     SubscriptionModule,
+    InvoiceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

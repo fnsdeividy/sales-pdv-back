@@ -155,6 +155,16 @@ $ yarn run test:e2e
 $ yarn run test:cov
 ```
 
+## MCP PostgreSQL (Cursor)
+
+O projeto inclui configuração do [PostgreSQL MCP Server](https://github.com/HenkDz/postgresql-mcp-server) para uso no Cursor.
+
+**Requisitos:** Node.js ≥18, banco PostgreSQL (ex.: `docker-compose up -d postgres`).
+
+A config está em `.cursor/mcp.json` e usa por padrão a connection string do Docker (porta **5434**). Para outra conexão, edite esse arquivo ou use `.cursor/mcp.example.json` como base.
+
+Após abrir o projeto no Cursor, o MCP Postgres fica disponível para o assistente (consultas, schema, índices, etc.).
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

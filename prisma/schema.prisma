@@ -68,7 +68,36 @@ model Store {
   fixedCosts       FixedCost[]
   invoices         Invoice[]
 
+  // Relations - assinatura por loja (1:1)
+  subscription     StoreSubscription?
+
   @@map("stores")
+}
+
+model StoreSubscription {
+  id                   String   @id @default(uuid())
+  storeId              String   @map("store_id")
+  status               String
+  planId               String
+  planName             String?
+  trialStartAt         DateTime? @map("trial_start_at")
+  trialEndAt           DateTime? @map("trial_end_at")
+  currentPeriodStart   DateTime? @map("current_period_start")
+  currentPeriodEnd     DateTime? @map("current_period_end")
+  canceledAt           DateTime? @map("canceled_at")
+  cancelAtPeriodEnd    Boolean   @default(false) @map("cancel_at_period_end")
+  nextBillingAt        DateTime? @map("next_billing_at")
+  externalCustomerId   String?  @map("external_customer_id")
+  externalSubscriptionId String? @map("external_subscription_id")
+  externalPlanId       String?  @map("external_plan_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId])
+  @@map("store_subscriptions")
 }
 
 model Product {
@@ -178,12 +207,36 @@ model Order {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   // Relations
-  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  store      Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  orderItems OrderItem[]
-  invoices   Invoice[]
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  store         Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orderItems    OrderItem[]
+  invoices      Invoice[]
+  nfeDocuments  NfeDocument[]
 
   @@map("orders")
+}
+
+model NfeDocument {
+  id              String    @id @default(uuid())
+  orderId         String    @map("order_id")
+  chaveAcesso     String    @map("chave_acesso")
+  numero          Int
+  serie           String
+  uf              String
+  modelo          String
+  ambiente        String    // homolog | producao
+  status          String    // PENDENTE_ENVIO, ENVIADO, PROCESSANDO, AUTORIZADO, REJEITADO
+  recibo          String?
+  protocolo       String?
+  mensagemRetorno String?   @map("mensagem_retorno")
+  xmlAssinado     String    @map("xml_assinado") @db.Text
+  xmlAutorizado   String?   @map("xml_autorizado") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("nfe_documents")
 }
 
 model OrderItem {

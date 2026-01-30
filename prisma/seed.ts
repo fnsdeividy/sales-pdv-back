@@ -54,6 +54,24 @@ async function main() {
     },
   });
 
+  // Usuário pago para testes (Notas Fiscais) - vnn2006@gmail.com
+  const paidTestUser = await prisma.user.upsert({
+    where: { email: 'vnn2006@gmail.com' },
+    update: {
+      storeId: mainStore.id,
+      password: hashedPassword,
+    },
+    create: {
+      email: 'vnn2006@gmail.com',
+      password: hashedPassword,
+      firstName: 'Usuario',
+      lastName: 'Pago Teste',
+      isActive: true,
+      emailVerified: true,
+      storeId: mainStore.id,
+    },
+  });
+
   // Criar role admin
   const adminRole = await prisma.role.upsert({
     where: { name: 'admin' },
@@ -90,6 +108,20 @@ async function main() {
     update: {},
     create: {
       userId: adminUser2.id,
+      roleId: adminRole.id,
+    },
+  });
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: paidTestUser.id,
+        roleId: adminRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: paidTestUser.id,
       roleId: adminRole.id,
     },
   });
@@ -303,6 +335,7 @@ async function main() {
   console.log('Admin users:');
   console.log('  - teste@gmail.com / admin123');
   console.log('  - cristianosenna79@gmail.com / admin123');
+  console.log('  - vnn2006@gmail.com / admin123 (user pago – Notas Fiscais)');
   console.log('Test user: test@example.com / test123');
   console.log('Cashier user: caixa@example.com / caixa123');
   console.log('Main store created with ID:', mainStore.id);
