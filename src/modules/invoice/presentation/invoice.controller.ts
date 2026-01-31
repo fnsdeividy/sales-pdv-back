@@ -10,7 +10,8 @@ import {
   Query,
   HttpStatus,
   HttpCode,
-  HttpException,
+  BadRequestException,
+  StreamableFile,
 } from '@nestjs/common';
 import { IsString, IsNumber, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -62,7 +63,7 @@ export class InvoiceController {
     @Query('customerName') customerName?: string,
   ) {
     if (!user?.storeId) {
-      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+      throw new BadRequestException('StoreId não encontrado. Usuário não está associado a uma loja.');
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -83,7 +84,7 @@ export class InvoiceController {
     @Body() body: CreateInvoiceDto,
   ) {
     if (!user?.storeId) {
-      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+      throw new BadRequestException('StoreId não encontrado. Usuário não está associado a uma loja.');
     }
     return this.invoiceService.create(user.storeId, body);
   }
@@ -91,28 +92,28 @@ export class InvoiceController {
   @Patch(':id/issue')
   @HttpCode(HttpStatus.OK)
   async issue(@Param('id') id: string, @CurrentUser() user: { storeId?: string }) {
-    if (!user?.storeId) throw new Error('StoreId não encontrado.');
+    if (!user?.storeId) throw new BadRequestException('StoreId não encontrado.');
     return this.invoiceService.issue(id, user.storeId);
   }
 
   @Patch(':id/send')
   @HttpCode(HttpStatus.OK)
   async send(@Param('id') id: string, @CurrentUser() user: { storeId?: string }, @Body() _body?: { email?: string }) {
-    if (!user?.storeId) throw new Error('StoreId não encontrado.');
+    if (!user?.storeId) throw new BadRequestException('StoreId não encontrado.');
     return this.invoiceService.send(id, user.storeId);
   }
 
   @Patch(':id/cancel')
   @HttpCode(HttpStatus.OK)
   async cancel(@Param('id') id: string, @CurrentUser() user: { storeId?: string }, @Body() _body?: { reason?: string }) {
-    if (!user?.storeId) throw new Error('StoreId não encontrado.');
+    if (!user?.storeId) throw new BadRequestException('StoreId não encontrado.');
     return this.invoiceService.cancel(id, user.storeId);
   }
 
   @Patch(':id/mark-paid')
   @HttpCode(HttpStatus.OK)
   async markPaid(@Param('id') id: string, @CurrentUser() user: { storeId?: string }, @Body() _body?: { paymentDate?: string }) {
-    if (!user?.storeId) throw new Error('StoreId não encontrado.');
+    if (!user?.storeId) throw new BadRequestException('StoreId não encontrado.');
     return this.invoiceService.markPaid(id, user.storeId);
   }
 
@@ -121,14 +122,14 @@ export class InvoiceController {
     @Param('id') id: string,
     @Query('format') format: 'pdf' | 'xml' = 'pdf',
     @CurrentUser() user?: { storeId?: string },
-  ) {
-    if (!user?.storeId) throw new Error('StoreId não encontrado.');
-    // PDF ainda não implementado: retorna 501 com mensagem amigável para o front exibir
+  ): Promise<StreamableFile | { downloadUrl: string }> {
+    if (!user?.storeId) throw new BadRequestException('StoreId não encontrado.');
     if (format === 'pdf') {
-      throw new HttpException(
-        'Download de PDF em desenvolvimento. Em breve você poderá baixar a nota fiscal.',
-        HttpStatus.NOT_IMPLEMENTED,
-      );
+      const buffer = await this.invoiceService.getPdfBuffer(id, user.storeId);
+      return new StreamableFile(buffer, {
+        type: 'application/pdf',
+        disposition: `attachment; filename="nota-fiscal-${id}.pdf"`,
+      });
     }
     return this.invoiceService.getDownloadUrl(id, user.storeId, format);
   }
@@ -140,14 +141,14 @@ export class InvoiceController {
     @CurrentUser() user: { storeId?: string },
     @Body() body: { customerName?: string; totalAmount?: number; issueDate?: string; dueDate?: string; notes?: string },
   ) {
-    if (!user?.storeId) throw new Error('StoreId não encontrado.');
+    if (!user?.storeId) throw new BadRequestException('StoreId não encontrado.');
     return this.invoiceService.update(id, user.storeId, body);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string, @CurrentUser() user: { storeId?: string }) {
-    if (!user?.storeId) throw new Error('StoreId não encontrado.');
+    if (!user?.storeId) throw new BadRequestException('StoreId não encontrado.');
     await this.invoiceService.delete(id, user.storeId);
   }
 
@@ -155,7 +156,7 @@ export class InvoiceController {
   @HttpCode(HttpStatus.OK)
   async findById(@Param('id') id: string, @CurrentUser() user: { storeId?: string }) {
     if (!user?.storeId) {
-      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+      throw new BadRequestException('StoreId não encontrado. Usuário não está associado a uma loja.');
     }
     return this.invoiceService.findById(id, user.storeId);
   }

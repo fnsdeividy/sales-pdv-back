@@ -8,7 +8,9 @@ module.exports = (options, webpack) => {
 
   return {
     ...options,
-    externals: {},
+    externals: {
+      pdfkit: 'commonjs pdfkit',
+    },
     output: {
       ...options.output,
       libraryTarget: 'commonjs2',

@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 /** Token de injeção para a configuração NFe */
 export const NFE_CONFIG = Symbol('NFE_CONFIG');
 
+export type NfeProvider = 'sefaz' | 'nuvemfiscal';
+
 export interface NfeEmitenteConfig {
   cnpj: string;
   ie: string;
@@ -49,7 +51,17 @@ export interface NfeSoapConfig {
   consultaNfeUrl: string;
 }
 
+export interface NuvemFiscalConfig {
+  baseUrl: string;
+  authUrl: string;
+  clientId: string;
+  clientSecret: string;
+  scope: string;
+  timeoutMs: number;
+}
+
 export interface NfeConfig {
+  provider: NfeProvider;
   ambiente: 'homolog' | 'producao';
   uf: string;
   ufCodigo: string;
@@ -60,12 +72,13 @@ export interface NfeConfig {
   consultaAutomatica: boolean;
   consultaMaxTentativas: number;
   consultaIntervaloMs: number;
-  certificadoPfxPath: string;
-  certificadoPfxSenha: string;
+  certificadoPfxPath?: string;
+  certificadoPfxSenha?: string;
   emitente: NfeEmitenteConfig;
   destinatarioPadrao: NfeDestinatarioPadraoConfig;
   fiscal: NfeFiscalConfig;
-  soap: NfeSoapConfig;
+  soap?: NfeSoapConfig;
+  nuvemFiscal?: NuvemFiscalConfig;
 }
 
 const requireValue = (value: string | undefined, name: string): string => {
@@ -76,8 +89,14 @@ const requireValue = (value: string | undefined, name: string): string => {
 };
 
 export const getNfeConfig = (configService: ConfigService): NfeConfig => {
+  const provider = (configService.get<string>('NFE_PROVIDER') || 'sefaz') as NfeProvider;
+  const ambiente = (configService.get<string>('NFE_ENV') || 'homolog') as 'homolog' | 'producao';
+  const requireWhen = (condition: boolean, value: string | undefined, name: string): string | undefined =>
+    condition ? requireValue(value, name) : value;
+
   return {
-    ambiente: (configService.get<string>('NFE_ENV') || 'homolog') as 'homolog' | 'producao',
+    provider,
+    ambiente,
     uf: configService.get<string>('NFE_UF') || 'RJ',
     ufCodigo: configService.get<string>('NFE_UF_CODIGO') || '33',
     serie: configService.get<string>('NFE_SERIE') || '1',
@@ -87,8 +106,8 @@ export const getNfeConfig = (configService: ConfigService): NfeConfig => {
     consultaAutomatica: (configService.get<string>('NFE_CONSULTA_AUTOMATICA') || 'true') === 'true',
     consultaMaxTentativas: Number(configService.get<string>('NFE_CONSULTA_MAX_TENTATIVAS') || '10'),
     consultaIntervaloMs: Number(configService.get<string>('NFE_CONSULTA_INTERVALO_MS') || '3000'),
-    certificadoPfxPath: requireValue(configService.get<string>('NFE_CERT_PFX_PATH'), 'NFE_CERT_PFX_PATH'),
-    certificadoPfxSenha: requireValue(configService.get<string>('NFE_CERT_PFX_PASSWORD'), 'NFE_CERT_PFX_PASSWORD'),
+    certificadoPfxPath: requireWhen(provider === 'sefaz', configService.get<string>('NFE_CERT_PFX_PATH'), 'NFE_CERT_PFX_PATH'),
+    certificadoPfxSenha: requireWhen(provider === 'sefaz', configService.get<string>('NFE_CERT_PFX_PASSWORD'), 'NFE_CERT_PFX_PASSWORD'),
     emitente: {
       cnpj: requireValue(configService.get<string>('NFE_EMIT_CNPJ'), 'NFE_EMIT_CNPJ'),
       ie: requireValue(configService.get<string>('NFE_EMIT_IE'), 'NFE_EMIT_IE'),
@@ -126,10 +145,24 @@ export const getNfeConfig = (configService: ConfigService): NfeConfig => {
       natOp: configService.get<string>('NFE_NAT_OP') || 'VENDA DE MERCADORIA',
       tpEmis: configService.get<string>('NFE_TP_EMIS') || '1',
     },
-    soap: {
-      envioLoteUrl: requireValue(configService.get<string>('NFE_WS_ENVIO_LOTE_URL'), 'NFE_WS_ENVIO_LOTE_URL'),
-      consultaReciboUrl: requireValue(configService.get<string>('NFE_WS_CONSULTA_RECIBO_URL'), 'NFE_WS_CONSULTA_RECIBO_URL'),
-      consultaNfeUrl: requireValue(configService.get<string>('NFE_WS_CONSULTA_NFE_URL'), 'NFE_WS_CONSULTA_NFE_URL'),
-    },
+    soap: provider === 'sefaz'
+      ? {
+        envioLoteUrl: requireValue(configService.get<string>('NFE_WS_ENVIO_LOTE_URL'), 'NFE_WS_ENVIO_LOTE_URL'),
+        consultaReciboUrl: requireValue(configService.get<string>('NFE_WS_CONSULTA_RECIBO_URL'), 'NFE_WS_CONSULTA_RECIBO_URL'),
+        consultaNfeUrl: requireValue(configService.get<string>('NFE_WS_CONSULTA_NFE_URL'), 'NFE_WS_CONSULTA_NFE_URL'),
+      }
+      : undefined,
+    nuvemFiscal: provider === 'nuvemfiscal'
+      ? {
+        baseUrl:
+          configService.get<string>('NUVEM_FISCAL_BASE_URL') ||
+          (ambiente === 'homolog' ? 'https://api.sandbox.nuvemfiscal.com.br' : 'https://api.nuvemfiscal.com.br'),
+        authUrl: configService.get<string>('NUVEM_FISCAL_AUTH_URL') || 'https://auth.nuvemfiscal.com.br/oauth/token',
+        clientId: requireValue(configService.get<string>('NUVEM_FISCAL_CLIENT_ID'), 'NUVEM_FISCAL_CLIENT_ID'),
+        clientSecret: requireValue(configService.get<string>('NUVEM_FISCAL_CLIENT_SECRET'), 'NUVEM_FISCAL_CLIENT_SECRET'),
+        scope: configService.get<string>('NUVEM_FISCAL_SCOPE') || 'nfe',
+        timeoutMs: Number(configService.get<string>('NUVEM_FISCAL_TIMEOUT_MS') || '20000'),
+      }
+      : undefined,
   };
 };

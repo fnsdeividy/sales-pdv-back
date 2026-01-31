@@ -18,6 +18,7 @@ export interface NfeDocumentEntity {
   ambiente: NfeEnvironment;
   status: NfeStatus;
   recibo?: string | null;
+  nuvemFiscalId?: string | null;
   protocolo?: string | null;
   mensagemRetorno?: string | null;
   xmlAssinado: string;

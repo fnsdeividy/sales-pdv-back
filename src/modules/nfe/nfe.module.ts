@@ -8,6 +8,8 @@ import { getNfeConfig, NFE_CONFIG, NfeConfig } from '@modules/nfe/application/co
 import { NfeXmlBuilder } from '@modules/nfe/infra/xml/nfe-xml.builder';
 import { NfeXmlSigner } from '@modules/nfe/infra/xml/nfe-xml.signer';
 import { NfeSoapClient } from '@modules/nfe/infra/soap/nfe-soap.client';
+import { NuvemFiscalClient } from '@modules/nfe/infra/nuvem-fiscal/nuvem-fiscal.client';
+import { NuvemFiscalNfeBuilder } from '@modules/nfe/infra/nuvem-fiscal/nuvem-fiscal-nfe.builder';
 import { SubscriptionModule } from '@modules/subscription/subscription.module';
 
 @Module({
@@ -27,12 +29,23 @@ import { SubscriptionModule } from '@modules/subscription/subscription.module';
     },
     {
       provide: NfeXmlSigner,
-      useFactory: (config: NfeConfig) => new NfeXmlSigner(config.certificadoPfxPath, config.certificadoPfxSenha),
+      useFactory: (config: NfeConfig) =>
+        new NfeXmlSigner(config.certificadoPfxPath || '', config.certificadoPfxSenha || ''),
       inject: [NFE_CONFIG],
     },
     {
       provide: NfeSoapClient,
       useFactory: (config: NfeConfig) => new NfeSoapClient(config),
+      inject: [NFE_CONFIG],
+    },
+    {
+      provide: NuvemFiscalClient,
+      useFactory: (config: NfeConfig) => new NuvemFiscalClient(config),
+      inject: [NFE_CONFIG],
+    },
+    {
+      provide: NuvemFiscalNfeBuilder,
+      useFactory: (config: NfeConfig) => new NuvemFiscalNfeBuilder(config),
       inject: [NFE_CONFIG],
     },
     NfeService,

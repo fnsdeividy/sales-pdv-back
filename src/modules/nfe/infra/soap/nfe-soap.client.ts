@@ -33,7 +33,14 @@ export interface NfeConsultaResposta {
 export class NfeSoapClient {
   constructor(private readonly config: NfeConfig) {}
 
+  private ensureSefazConfig() {
+    if (this.config.provider !== 'sefaz' || !this.config.soap || !this.config.certificadoPfxPath || !this.config.certificadoPfxSenha) {
+      throw new Error('Configuração SEFAZ inválida. Verifique NFE_CERT_* e NFE_WS_*.');
+    }
+  }
+
   private async postXml(url: string, xml: string): Promise<string> {
+    this.ensureSefazConfig();
     return new Promise((resolve, reject) => {
       const request = https.request(
         url,
@@ -43,8 +50,8 @@ export class NfeSoapClient {
             'Content-Type': 'application/soap+xml; charset=utf-8',
             'Content-Length': Buffer.byteLength(xml),
           },
-          pfx: require('node:fs').readFileSync(this.config.certificadoPfxPath),
-          passphrase: this.config.certificadoPfxSenha,
+          pfx: require('node:fs').readFileSync(this.config.certificadoPfxPath as string),
+          passphrase: this.config.certificadoPfxSenha as string,
         },
         response => {
           let data = '';
@@ -71,6 +78,8 @@ export class NfeSoapClient {
   }
 
   async enviarLoteNfe(xmlAssinado: string, loteId: string): Promise<NfeEnvioResposta> {
+    this.ensureSefazConfig();
+    const soap = this.config.soap!;
     const body = `
 <enviNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="${this.config.versao}">
   <idLote>${loteId}</idLote>
@@ -79,7 +88,7 @@ export class NfeSoapClient {
 </enviNFe>`;
 
     const envelope = this.buildSoapEnvelope(body);
-    const response = await this.postXml(this.config.soap.envioLoteUrl, envelope);
+    const response = await this.postXml(soap.envioLoteUrl, envelope);
 
     return {
       status: extractTagValue(response, 'cStat'),
@@ -90,6 +99,8 @@ export class NfeSoapClient {
   }
 
   async consultarRecibo(recibo: string): Promise<NfeConsultaResposta> {
+    this.ensureSefazConfig();
+    const soap = this.config.soap!;
     const body = `
 <consReciNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="${this.config.versao}">
   <tpAmb>${this.config.ambiente === 'homolog' ? '2' : '1'}</tpAmb>
@@ -97,7 +108,7 @@ export class NfeSoapClient {
 </consReciNFe>`;
 
     const envelope = this.buildSoapEnvelope(body);
-    const response = await this.postXml(this.config.soap.consultaReciboUrl, envelope);
+    const response = await this.postXml(soap.consultaReciboUrl, envelope);
 
     return {
       status: extractTagValue(response, 'cStat'),
@@ -109,6 +120,8 @@ export class NfeSoapClient {
   }
 
   async consultarNfe(chave: string): Promise<NfeConsultaResposta> {
+    this.ensureSefazConfig();
+    const soap = this.config.soap!;
     const body = `
 <consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="${this.config.versao}">
   <tpAmb>${this.config.ambiente === 'homolog' ? '2' : '1'}</tpAmb>
@@ -117,7 +130,7 @@ export class NfeSoapClient {
 </consSitNFe>`;
 
     const envelope = this.buildSoapEnvelope(body);
-    const response = await this.postXml(this.config.soap.consultaNfeUrl, envelope);
+    const response = await this.postXml(soap.consultaNfeUrl, envelope);
 
     return {
       status: extractTagValue(response, 'cStat'),

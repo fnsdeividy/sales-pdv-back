@@ -1,5 +1,23 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+
+/** Converte Prisma Decimal ou número para number. */
+function toNumber(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  if (typeof value === 'object' && value !== null && 'toNumber' in value && typeof (value as { toNumber: () => number }).toNumber === 'function') {
+    return (value as { toNumber: () => number }).toNumber();
+  }
+  const n = parseFloat(String(value));
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/** Formata data para exibição no PDF. */
+function formatDate(value: unknown): string {
+  if (value == null) return '-';
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? '-' : d.toLocaleDateString('pt-BR');
+}
 
 export interface InvoiceListFilters {
   status?: string;
@@ -230,6 +248,106 @@ export class InvoiceService {
   async getDownloadUrl(id: string, storeId: string, _format: 'pdf' | 'xml'): Promise<{ downloadUrl: string }> {
     await this.ensureExistsAndOwnership(id, storeId);
     return { downloadUrl: `/api/v1/invoices/${id}/download?format=pdf` };
+  }
+
+  /** Gera o buffer do PDF da nota fiscal para download. */
+  async getPdfBuffer(id: string, storeId: string): Promise<Buffer> {
+    try {
+      const inv = await this.prisma.invoice.findFirst({
+        where: { id, storeId },
+        include: { customer: true, store: true },
+      });
+      if (!inv) throw new NotFoundException('Nota fiscal não encontrada.');
+
+      const total = toNumber(inv.totalAmount);
+      const taxAmount = toNumber(inv.taxAmount);
+      const subtotal = total - taxAmount;
+      const store = inv.store ?? null;
+      const customer = inv.customer ?? null;
+
+      // Carregar pdfkit em runtime (evita falha no bundle Webpack)
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const PDFDocument = require('pdfkit');
+
+      return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      let y = 50;
+      doc.fontSize(18).font('Helvetica-Bold').text('NOTA FISCAL', 0, y, { align: 'center', width: doc.page.width });
+      y += 28;
+      doc.fontSize(12).font('Helvetica').text(`Nº ${inv.invoiceNumber}`, 0, y, { align: 'center', width: doc.page.width });
+      y += 40;
+
+      doc.fontSize(10).font('Helvetica-Bold').text('Emitente', 50, y);
+      y += 18;
+      doc.font('Helvetica');
+      doc.text(store?.name ?? 'Loja', 50, y);
+      y += 14;
+      doc.text([store?.address, store?.city, store?.state, store?.zipCode].filter(Boolean).join(', ') || '-', 50, y);
+      y += 14;
+      if (store?.email) {
+        doc.text(store.email, 50, y);
+        y += 14;
+      }
+      y += 12;
+
+      doc.font('Helvetica-Bold').text('Destinatário', 50, y);
+      y += 18;
+      doc.font('Helvetica');
+      doc.text(inv.customerName, 50, y);
+      y += 14;
+      const endereco = [customer?.address, customer?.city, customer?.state, customer?.zipCode].filter(Boolean).join(', ') || '-';
+      doc.text(endereco, 50, y);
+      y += 14;
+      if (customer?.email) {
+        doc.text(customer.email, 50, y);
+        y += 14;
+      }
+      if (customer?.phone) {
+        doc.text(customer.phone, 50, y);
+        y += 14;
+      }
+      y += 12;
+
+      doc.font('Helvetica').text(`Data de emissão: ${formatDate(inv.issueDate)}`, 50, y);
+      y += 16;
+      if (inv.dueDate) {
+        doc.text(`Vencimento: ${formatDate(inv.dueDate)}`, 50, y);
+        y += 16;
+      }
+      y += 16;
+
+      doc.font('Helvetica-Bold').text('Resumo', 50, y);
+      y += 18;
+      doc.font('Helvetica');
+      doc.text(`Subtotal: R$ ${subtotal.toFixed(2)}`, 50, y);
+      y += 16;
+      if (taxAmount > 0) {
+        doc.text(`Impostos: R$ ${taxAmount.toFixed(2)}`, 50, y);
+        y += 16;
+      }
+      doc.font('Helvetica-Bold').text(`Total: R$ ${total.toFixed(2)}`, 50, y);
+      y += 24;
+
+      if (inv.notes) {
+        doc.font('Helvetica').text('Observações:', 50, y);
+        y += 16;
+        doc.text(inv.notes, 50, y, { width: 495 });
+        y += 36;
+      }
+
+      doc.fontSize(8).font('Helvetica').text(`Status: ${inv.status} | Gerado em ${new Date().toLocaleString('pt-BR')}`, 50, doc.page.height - 40, { align: 'center', width: 495 });
+      doc.end();
+    });
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      throw new InternalServerErrorException(`Erro ao gerar PDF: ${message}`);
+    }
   }
 
   private async ensureExistsAndOwnership(id: string, storeId: string) {

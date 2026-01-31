@@ -227,6 +227,7 @@ model NfeDocument {
   ambiente        String    // homolog | producao
   status          String    // PENDENTE_ENVIO, ENVIADO, PROCESSANDO, AUTORIZADO, REJEITADO
   recibo          String?
+  nuvemFiscalId   String?   @map("nuvem_fiscal_id")
   protocolo       String?
   mensagemRetorno String?   @map("mensagem_retorno")
   xmlAssinado     String    @map("xml_assinado") @db.Text

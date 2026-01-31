@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@modules/prisma/prisma.service';
-import { NfeStatus } from '@modules/nfe/domain/entities/nfe-document.entity';
+import { NfeDocumentEntity, NfeStatus } from '@modules/nfe/domain/entities/nfe-document.entity';
 
 @Injectable()
 export class NfeRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findById(id: string) {
-    return this.prisma.nfeDocument.findUnique({ where: { id } });
+  async findById(id: string): Promise<NfeDocumentEntity | null> {
+    const doc = await this.prisma.nfeDocument.findUnique({ where: { id } });
+    return doc as NfeDocumentEntity | null;
   }
 
   async findLatestByOrderId(orderId: string) {
@@ -46,6 +47,7 @@ export class NfeRepository {
     ambiente: 'homolog' | 'producao';
     status: NfeStatus;
     recibo?: string | null;
+    nuvemFiscalId?: string | null;
     protocolo?: string | null;
     mensagemRetorno?: string | null;
     xmlAssinado: string;
@@ -62,6 +64,7 @@ export class NfeRepository {
         ambiente: data.ambiente,
         status: data.status,
         recibo: data.recibo,
+        nuvemFiscalId: data.nuvemFiscalId,
         protocolo: data.protocolo,
         mensagemRetorno: data.mensagemRetorno,
         xmlAssinado: data.xmlAssinado,
