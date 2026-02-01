@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '@modules/prisma/prisma.service';
 import { Sale, SaleItem } from '@modules/sales/entities/sale.entity';
 import { ISalesRepository } from '@modules/sales/presentation/interfaces/sales.interface';
@@ -178,59 +178,108 @@ export class SalesRepository implements ISalesRepository {
 
     const storeId = data.storeId;
 
-    // Criar ou encontrar cliente baseado nos dados fornecidos
-    let customerId = '4F461257-2F49-4667-83E4-A9510DDAE575'; // Cliente padrão como fallback
-    let customerFound = false;
+    const items = Array.isArray(data.items) ? data.items : [];
 
-    // Se customerId foi fornecido diretamente, usar ele
-    if (data.customerId) {
-      const existingCustomer = await this.prisma.customer.findUnique({
-        where: { id: data.customerId }
+    if (items.some(item => !item.productId)) {
+      throw new BadRequestException('Product ID is required for all items');
+    }
+
+    const uniqueProductIds = Array.from(new Set(items.map(item => item.productId)));
+    let productMap = new Map<string, { id: string; name: string }>();
+
+    if (uniqueProductIds.length > 0) {
+      const products = await this.prisma.product.findMany({
+        where: {
+          id: { in: uniqueProductIds },
+          storeId,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
       });
-      
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-        customerFound = true;
-        console.log(`Using provided customer ID: ${existingCustomer.firstName} ${existingCustomer.lastName}`);
-      } else {
-        console.warn(`Customer with ID ${data.customerId} not found, will try to find or create by name`);
+
+      if (products.length !== uniqueProductIds.length) {
+        throw new NotFoundException('One or more products not found in your store');
+      }
+
+      productMap = new Map(products.map(product => [product.id, product]));
+    }
+
+    // Criar ou encontrar cliente baseado nos dados fornecidos
+    let customerId: string | null = null;
+    const normalizedName = data.customerName?.trim();
+    const normalizedEmail = data.customerEmail?.trim();
+    const normalizedPhone = data.customerPhone?.trim();
+
+    // Se customerId foi fornecido diretamente, validar que pertence à loja
+    if (data.customerId) {
+      const existingCustomer = await this.prisma.customer.findFirst({
+        where: {
+          id: data.customerId,
+          storeId,
+        },
+      });
+
+      if (!existingCustomer) {
+        throw new NotFoundException('Customer not found in your store');
+      }
+
+      customerId = existingCustomer.id;
+    }
+
+    // Se não encontramos cliente pelo ID, buscar cliente existente na mesma loja
+    if (!customerId) {
+      const orFilters: any[] = [];
+
+      if (normalizedName) {
+        const nameParts = normalizedName.split(/\s+/);
+        const firstName = nameParts[0] || normalizedName;
+        const lastName = nameParts.slice(1).join(' ') || '';
+
+        orFilters.push({
+          AND: [
+            { firstName: { equals: firstName, mode: 'insensitive' } },
+            { lastName: { equals: lastName, mode: 'insensitive' } },
+          ],
+        });
+      }
+
+      if (normalizedEmail) {
+        orFilters.push({ email: { equals: normalizedEmail, mode: 'insensitive' } });
+      }
+
+      if (normalizedPhone) {
+        orFilters.push({ phone: normalizedPhone });
+      }
+
+      if (orFilters.length > 0) {
+        const existingCustomer = await this.prisma.customer.findFirst({
+          where: {
+            storeId,
+            OR: orFilters,
+          },
+        });
+
+        if (existingCustomer) {
+          customerId = existingCustomer.id;
+        }
       }
     }
 
-    // Se não encontramos cliente pelo ID e temos customerName, buscar ou criar cliente
-    if (!customerFound && data.customerName) {
-      // Separar nome completo em primeiro e último nome
-      const nameParts = data.customerName.trim().split(/\s+/);
-      const firstName = nameParts[0] || data.customerName;
-      const lastName = nameParts.slice(1).join(' ') || '';
+    // Se ainda não encontrou cliente, criar novo ou usar cliente padrão por loja
+    if (!customerId) {
+      if (normalizedName || normalizedEmail || normalizedPhone) {
+        const nameParts = (normalizedName || 'Cliente').split(/\s+/);
+        const firstName = nameParts[0] || normalizedName || 'Cliente';
+        const lastName = nameParts.slice(1).join(' ') || '';
 
-      // Tentar encontrar cliente existente pelo nome completo ou email
-      const existingCustomer = await this.prisma.customer.findFirst({
-        where: {
-          OR: [
-            {
-              AND: [
-                { firstName: { equals: firstName, mode: 'insensitive' } },
-                { lastName: { equals: lastName, mode: 'insensitive' } }
-              ]
-            },
-            { email: data.customerEmail || undefined },
-            { phone: data.customerPhone || undefined }
-          ]
-        }
-      });
-
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-        console.log(`Using existing customer: ${existingCustomer.firstName} ${existingCustomer.lastName}`);
-      } else {
-        // Criar novo cliente
         const newCustomer = await this.prisma.customer.create({
           data: {
-            firstName: firstName,
-            lastName: lastName,
-            email: data.customerEmail || null,
-            phone: data.customerPhone || null,
+            firstName,
+            lastName,
+            email: normalizedEmail || null,
+            phone: normalizedPhone || null,
             isActive: true,
             store: {
               connect: { id: storeId },
@@ -238,8 +287,14 @@ export class SalesRepository implements ISalesRepository {
           },
         });
         customerId = newCustomer.id;
-        console.log(`Created new customer: ${newCustomer.firstName} ${newCustomer.lastName}`);
+      } else {
+        const defaultCustomer = await this.getOrCreateDefaultCustomer(storeId);
+        customerId = defaultCustomer.id;
       }
+    }
+
+    if (!customerId) {
+      throw new BadRequestException('Customer ID is required');
     }
 
     const order = await this.prisma.order.create({
@@ -254,20 +309,21 @@ export class SalesRepository implements ISalesRepository {
         paymentMethod: data.paymentMethod || 'cash',
         notes: data.notes || '',
         orderItems: {
-          create: data.items?.map(item => {
+          create: items.map(item => {
             const unitPrice = item.unitPrice || item.price || 0;
             const quantity = item.quantity || 1;
             const total = unitPrice * quantity;
+            const product = productMap.get(item.productId);
 
             return {
               productId: item.productId,
-              productName: item.productName || 'Produto',
-              quantity: quantity,
-              unitPrice: unitPrice,
+              productName: item.productName || product?.name || 'Produto',
+              quantity,
+              unitPrice,
               discount: item.discount || 0,
-              total: total,
+              total,
             };
-          }) || [],
+          }),
         },
       },
       include: {
@@ -385,5 +441,36 @@ export class SalesRepository implements ISalesRepository {
         createdAt: item.createdAt,
       })) || [],
     };
+  }
+
+  private async getOrCreateDefaultCustomer(storeId: string) {
+    const firstName = 'Cliente';
+    const lastName = 'Padrão';
+
+    const existing = await this.prisma.customer.findFirst({
+      where: {
+        storeId,
+        firstName,
+        lastName,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.customer.create({
+      data: {
+        firstName,
+        lastName,
+        email: null,
+        phone: null,
+        isActive: true,
+        store: {
+          connect: { id: storeId },
+        },
+      },
+    });
   }
 }

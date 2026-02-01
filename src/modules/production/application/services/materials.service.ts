@@ -304,11 +304,13 @@ export class MaterialsService {
     });
   }
 
-  async findMultipleProductsBom(productIds: string[], storeId?: string) {
+  async findMultipleProductsBom(productIds: string[], storeId: string) {
+    if (!storeId || typeof storeId !== 'string' || storeId.trim() === '') {
+      throw new BadRequestException('Store ID is required for multi-tenant isolation');
+    }
     // Filter valid UUIDs to avoid database errors
     const validProductIds = productIds.filter(id => {
       try {
-        // Simple UUID validation
         return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       } catch {
         return false;
@@ -319,18 +321,15 @@ export class MaterialsService {
       return {};
     }
 
-    // Se storeId fornecido, filtrar apenas produtos da loja
-    let filteredProductIds = validProductIds;
-    if (storeId) {
-      const products = await this.prisma.product.findMany({
-        where: {
-          id: { in: validProductIds },
-          storeId: storeId,
-        },
-        select: { id: true },
-      });
-      filteredProductIds = products.map(p => p.id);
-    }
+    // Sempre filtrar produtos pela loja do usuário (isolamento multi-tenant)
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: { in: validProductIds },
+        storeId: storeId.trim(),
+      },
+      select: { id: true },
+    });
+    const filteredProductIds = products.map(p => p.id);
 
     if (filteredProductIds.length === 0) {
       return {};

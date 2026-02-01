@@ -3,6 +3,8 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -70,6 +72,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     // SEMPRE usar o storeId do banco de dados (fonte de verdade)
     const storeIdFromDatabase = user.storeId.trim();
+
+    // #region agent log
+    try { const dir = path.join(process.cwd(), '.cursor'); if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); const logPath = path.join(dir, 'debug.log'); fs.appendFileSync(logPath, JSON.stringify({ location: 'jwt.strategy.ts:validate', message: 'JWT validate exit', data: { payloadSub: payload.sub, userId: user.id, userStoreId: storeIdFromDatabase }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A' }) + '\n'); } catch (_) {}
+    // #endregion
 
     return {
       id: user.id,

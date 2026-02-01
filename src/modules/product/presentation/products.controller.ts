@@ -1,36 +1,36 @@
-import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { ProductsService } from '../application/products.service';
 import { CurrentUser } from '../../../shared/decorators/current-user.decorator';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) { }
+  constructor(private readonly productsService: ProductsService) {}
 
   @Get()
   async findAll(@CurrentUser() user: any) {
-    console.log('🔍 ProductsController.findAll - User completo:', JSON.stringify(user, null, 2));
-    
-    // Validação rigorosa do usuário
+    // #region agent log
+    try { const dir = path.join(process.cwd(), '.cursor'); if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); const logPath = path.join(dir, 'debug.log'); fs.appendFileSync(logPath, JSON.stringify({ location: 'products.controller.ts:findAll', message: 'findAll entry', data: { userId: user?.id, userStoreId: user?.storeId }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'B' }) + '\n'); } catch (_) {}
+    // #endregion
     if (!user) {
-      console.error('❌ ProductsController.findAll - Usuário não autenticado!');
-      throw new Error('Usuário não autenticado');
+      throw new UnauthorizedException('Usuário não autenticado');
     }
-
-    // Validação rigorosa do storeId
     if (!user.storeId || typeof user.storeId !== 'string' || user.storeId.trim() === '') {
-      console.error('❌ ProductsController.findAll - StoreId inválido ou não encontrado no usuário!', {
-        userId: user.id,
-        email: user.email,
-        storeId: user.storeId,
-        storeIdType: typeof user.storeId,
-        userKeys: Object.keys(user),
-      });
-      throw new Error('StoreId não encontrado ou inválido. Usuário não está associado a uma loja válida.');
+      throw new ForbiddenException(
+        'StoreId não encontrado ou inválido. Usuário não está associado a uma loja válida.',
+      );
     }
-
-    console.log('✅ ProductsController.findAll - StoreId válido:', user.storeId);
-    
-    // Garantir que o storeId seja passado corretamente para o service
     const storeId = user.storeId.trim();
     return this.productsService.findAll(storeId);
   }
@@ -38,38 +38,37 @@ export class ProductsController {
   @Get(':id')
   async findOne(@Param('id') id: string, @CurrentUser() user: any) {
     if (!user?.storeId) {
-      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+      throw new ForbiddenException('StoreId não encontrado. Usuário não está associado a uma loja.');
     }
-    return this.productsService.findOne(id, user.storeId);
+    return this.productsService.findOne(id, user.storeId.trim());
   }
 
   @Post()
   async create(@Body() data: any, @CurrentUser() user: any) {
+    // #region agent log
+    try { const dir = path.join(process.cwd(), '.cursor'); if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); const logPath = path.join(dir, 'debug.log'); fs.appendFileSync(logPath, JSON.stringify({ location: 'products.controller.ts:create', message: 'create product', data: { userId: user?.id, userStoreId: user?.storeId, productName: data?.name }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A' }) + '\n'); } catch (_) {}
+    // #endregion
     if (!user?.storeId) {
-      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+      throw new ForbiddenException('StoreId não encontrado. Usuário não está associado a uma loja.');
     }
-    // Garantir que o storeId do body seja ignorado e use o do usuário autenticado
     delete data.storeId;
-    return this.productsService.create(data, user.storeId);
+    return this.productsService.create(data, user.storeId.trim());
   }
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() data: any, @CurrentUser() user: any) {
     if (!user?.storeId) {
-      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+      throw new ForbiddenException('StoreId não encontrado. Usuário não está associado a uma loja.');
     }
-    // Garantir que o storeId do body seja ignorado e use o do usuário autenticado
     delete data.storeId;
-    return this.productsService.update(id, data, user.storeId);
+    return this.productsService.update(id, data, user.storeId.trim());
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() user: any) {
     if (!user?.storeId) {
-      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+      throw new ForbiddenException('StoreId não encontrado. Usuário não está associado a uma loja.');
     }
-    return this.productsService.remove(id, user.storeId);
+    return this.productsService.remove(id, user.storeId.trim());
   }
 }
-
-
