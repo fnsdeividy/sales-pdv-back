@@ -8,11 +8,19 @@ export interface SubscriptionPlan {
   name: string;
 }
 
+export interface StoreOwner {
+  name: string;
+  email: string;
+  phone: string | null;
+}
+
 export interface Subscription {
   status: SubscriptionStatus;
   trialEndsAt?: string;
   currentPeriodEnd?: string;
   plan?: SubscriptionPlan;
+  isOwner: boolean;
+  storeOwner: StoreOwner | null;
 }
 
 @Injectable()
@@ -28,7 +36,13 @@ export class SubscriptionService {
   async getSubscription(userId: string): Promise<Subscription> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, storeId: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        storeId: true,
+        createdAt: true,
+        userRoles: { include: { role: true } },
+      },
     });
 
     if (!user) {
@@ -39,10 +53,13 @@ export class SubscriptionService {
       throw new NotFoundException('Usuário não está associado a uma loja');
     }
 
+    const isOwner = user.userRoles.some((ur) => ur.role.name === 'admin');
     const storeSubscription = await this.getOrCreateStoreSubscription(user.storeId, user.createdAt);
 
     const { effectiveStatus, trialEndsAt, currentPeriodEnd } =
       this.calculateEffectiveStatus(storeSubscription);
+
+    const storeOwner = await this.getStoreOwner(user.storeId);
 
     return {
       status: effectiveStatus,
@@ -54,6 +71,41 @@ export class SubscriptionService {
             name: storeSubscription.planName || this.getDefaultPlanName(storeSubscription.planId),
           }
         : undefined,
+      isOwner,
+      storeOwner,
+    };
+  }
+
+  /**
+   * Retorna o primeiro usuário admin da loja (dono/responsável) para contato
+   * quando a assinatura está expirada e o usuário atual não é owner.
+   */
+  private async getStoreOwner(storeId: string): Promise<StoreOwner | null> {
+    const owner = await this.prisma.user.findFirst({
+      where: {
+        storeId,
+        userRoles: {
+          some: { role: { name: 'admin' } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+      },
+    });
+
+    if (!owner) {
+      return null;
+    }
+
+    const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ') || owner.email;
+    return {
+      name,
+      email: owner.email,
+      phone: owner.phone ?? null,
     };
   }
 
@@ -92,13 +144,9 @@ export class SubscriptionService {
   }
 
   /**
-   * Calcula o status efetivo com base nas datas, flags e plano.
-   *
-   * Regras principais:
-   * - Se houver plano válido (start/pro/enterprise) e o período atual ainda não
-   *   terminou, o status efetivo é sempre ACTIVE (plano pago/ativo).
-   * - TRIAL expirado vira EXPIRED.
-   * - ACTIVE/CANCELED com período vencido viram EXPIRED.
+   * Calcula o status efetivo com base no status gravado e nas datas.
+   * Backend é a fonte da verdade: um único status por loja (TRIAL | ACTIVE | EXPIRED | CANCELED).
+   * Pagamento sempre tem prioridade: webhook/admin setam status ACTIVE e trialEndAt null.
    */
   private calculateEffectiveStatus(subscription: {
     status: string;
@@ -113,65 +161,57 @@ export class SubscriptionService {
     currentPeriodEnd?: Date;
   } {
     const now = new Date();
-    const { status, trialEndAt, currentPeriodEnd, cancelAtPeriodEnd, canceledAt, planId } = subscription;
+    const { status, trialEndAt, currentPeriodEnd, cancelAtPeriodEnd, canceledAt } = subscription;
 
-    const isPaidPlan =
-      !!planId && (planId === 'start' || planId === 'pro' || planId === 'enterprise');
-
-    // Se há plano pago/ativo e o período atual ainda não terminou,
-    // sempre refletimos ACTIVE, independentemente de status interno.
-    if (isPaidPlan && currentPeriodEnd && now <= currentPeriodEnd) {
-      return {
-        effectiveStatus: 'ACTIVE',
-        trialEndsAt: trialEndAt || undefined,
-        currentPeriodEnd,
-      };
-    }
-
-    // Se está em TRIAL e já passou a data de término, vira EXPIRED
-    if (status === 'TRIAL') {
-      if (trialEndAt && now > trialEndAt) {
+    // 1. ACTIVE: acesso total enquanto o período atual não vencer
+    if (status === 'ACTIVE') {
+      if (currentPeriodEnd && now <= currentPeriodEnd) {
         return {
-          effectiveStatus: 'EXPIRED',
+          effectiveStatus: 'ACTIVE',
           trialEndsAt: trialEndAt || undefined,
-          currentPeriodEnd: currentPeriodEnd || undefined,
+          currentPeriodEnd,
         };
       }
       return {
-        effectiveStatus: 'TRIAL',
+        effectiveStatus: 'EXPIRED',
         trialEndsAt: trialEndAt || undefined,
         currentPeriodEnd: currentPeriodEnd || undefined,
       };
     }
 
-    // ACTIVE ou CANCELED dependem do currentPeriodEnd
-    if (status === 'ACTIVE' || status === 'CANCELED') {
-      if (!currentPeriodEnd || now > currentPeriodEnd) {
+    // 2. TRIAL: acesso em trial enquanto trialEndAt não vencer
+    if (status === 'TRIAL') {
+      if (trialEndAt && now <= trialEndAt) {
         return {
-          effectiveStatus: 'EXPIRED',
+          effectiveStatus: 'TRIAL',
           trialEndsAt: trialEndAt || undefined,
           currentPeriodEnd: currentPeriodEnd || undefined,
         };
       }
+      return {
+        effectiveStatus: 'EXPIRED',
+        trialEndsAt: trialEndAt || undefined,
+        currentPeriodEnd: currentPeriodEnd || undefined,
+      };
+    }
 
-      // Se marcado como cancelado ao fim do período, refletimos CANCELED,
-      // embora continue com acesso até currentPeriodEnd.
-      if (status === 'CANCELED' || (cancelAtPeriodEnd && canceledAt)) {
+    // 3. CANCELED: acesso até currentPeriodEnd, depois EXPIRED
+    if (status === 'CANCELED') {
+      if (currentPeriodEnd && now <= currentPeriodEnd) {
         return {
           effectiveStatus: 'CANCELED',
           trialEndsAt: trialEndAt || undefined,
           currentPeriodEnd,
         };
       }
-
       return {
-        effectiveStatus: 'ACTIVE',
+        effectiveStatus: 'EXPIRED',
         trialEndsAt: trialEndAt || undefined,
-        currentPeriodEnd,
+        currentPeriodEnd: currentPeriodEnd || undefined,
       };
     }
 
-    // Qualquer outro caso (incluindo EXPIRED explícito) é EXPIRED
+    // 4. Demais casos (incluindo EXPIRED explícito)
     return {
       effectiveStatus: 'EXPIRED',
       trialEndsAt: trialEndAt || undefined,

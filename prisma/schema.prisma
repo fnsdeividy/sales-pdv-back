@@ -101,24 +101,26 @@ model StoreSubscription {
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  sku         String?  @unique
-  barcode     String?  @unique
-  price       Decimal  @db.Decimal(10, 2)
-  costPrice   Decimal? @db.Decimal(10, 2)
-  category    String?
-  brand       String?
-  weight      Decimal? @db.Decimal(8, 3)
-  dimensions  String?
-  isActive    Boolean  @default(true)
-  storeId     String
-  baseUnit    Unit?    @map("base_unit")
-  outputUnit  Unit?    @map("output_unit")
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  sku           String?  @unique
+  barcode       String?  @unique
+  price         Decimal  @db.Decimal(10, 2)
+  costPrice     Decimal? @db.Decimal(10, 2)
+  category      String?
+  brand         String?
+  weight        Decimal? @db.Decimal(8, 3)
+  dimensions    String?
+  isActive      Boolean  @default(true)
+  storeId       String
+  isUnlimited   Boolean  @default(false) @map("is_unlimited")
+  stockQuantity Int?     @map("stock_quantity")
+  baseUnit      Unit?    @map("base_unit")
+  outputUnit    Unit?    @map("output_unit")
   outputUnitSize Decimal? @map("output_unit_size") @db.Decimal(10, 3)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
   store           Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)

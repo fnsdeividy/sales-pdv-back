@@ -185,7 +185,7 @@ export class SalesRepository implements ISalesRepository {
     }
 
     const uniqueProductIds = Array.from(new Set(items.map(item => item.productId)));
-    let productMap = new Map<string, { id: string; name: string }>();
+    let productMap = new Map<string, { id: string; name: string; isUnlimited: boolean; stockQuantity: number | null }>();
 
     if (uniqueProductIds.length > 0) {
       const products = await this.prisma.product.findMany({
@@ -196,6 +196,8 @@ export class SalesRepository implements ISalesRepository {
         select: {
           id: true,
           name: true,
+          isUnlimited: true,
+          stockQuantity: true,
         },
       });
 
@@ -203,7 +205,21 @@ export class SalesRepository implements ISalesRepository {
         throw new NotFoundException('One or more products not found in your store');
       }
 
-      productMap = new Map(products.map(product => [product.id, product]));
+      productMap = new Map(products.map(p => [p.id, { id: p.id, name: p.name, isUnlimited: p.isUnlimited, stockQuantity: p.stockQuantity }]));
+
+      for (const item of items) {
+        const product = productMap.get(item.productId);
+        if (!product) continue;
+        const qty = item.quantity || 1;
+        if (!product.isUnlimited) {
+          const stock = product.stockQuantity ?? 0;
+          if (stock < qty) {
+            throw new BadRequestException(
+              `Produto "${product.name}" sem estoque suficiente. Disponível: ${stock}, solicitado: ${qty}.`,
+            );
+          }
+        }
+      }
     }
 
     // Criar ou encontrar cliente baseado nos dados fornecidos
@@ -297,40 +313,63 @@ export class SalesRepository implements ISalesRepository {
       throw new BadRequestException('Customer ID is required');
     }
 
-    const order = await this.prisma.order.create({
-      data: {
-        orderNumber,
-        customerId,
-        storeId,
-        status: data.status || 'pending',
-        total: totalAmount,
-        discount: data.discount || 0,
-        tax: data.taxAmount || 0,
-        paymentMethod: data.paymentMethod || 'cash',
-        notes: data.notes || '',
-        orderItems: {
-          create: items.map(item => {
-            const unitPrice = item.unitPrice || item.price || 0;
-            const quantity = item.quantity || 1;
-            const total = unitPrice * quantity;
-            const product = productMap.get(item.productId);
+    const order = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          orderNumber,
+          customerId,
+          storeId,
+          status: data.status || 'pending',
+          total: totalAmount,
+          discount: data.discount || 0,
+          tax: data.taxAmount || 0,
+          paymentMethod: data.paymentMethod || 'cash',
+          notes: data.notes || '',
+          orderItems: {
+            create: items.map(item => {
+              const unitPrice = item.unitPrice || item.price || 0;
+              const quantity = item.quantity || 1;
+              const total = unitPrice * quantity;
+              const product = productMap.get(item.productId);
 
-            return {
-              productId: item.productId,
-              productName: item.productName || product?.name || 'Produto',
-              quantity,
-              unitPrice,
-              discount: item.discount || 0,
-              total,
-            };
-          }),
+              return {
+                productId: item.productId,
+                productName: item.productName || product?.name || 'Produto',
+                quantity,
+                unitPrice,
+                discount: item.discount || 0,
+                total,
+              };
+            }),
+          },
         },
-      },
-      include: {
-        orderItems: true,
-        customer: true,
-        store: true,
-      },
+        include: {
+          orderItems: true,
+          customer: true,
+          store: true,
+        },
+      });
+
+      for (const item of items) {
+        const product = productMap.get(item.productId);
+        if (!product || product.isUnlimited) continue;
+        const qty = item.quantity || 1;
+        await tx.product.updateMany({
+          where: { id: item.productId, storeId },
+          data: { stockQuantity: { decrement: qty } },
+        });
+        const stockRow = await tx.stock.findUnique({
+          where: { productId_storeId: { productId: item.productId, storeId } },
+        });
+        if (stockRow) {
+          await tx.stock.update({
+            where: { id: stockRow.id },
+            data: { quantity: { decrement: qty } },
+          });
+        }
+      }
+
+      return created;
     });
 
     return this.mapPrismaOrderToSale(order);

@@ -21,6 +21,44 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function toStockQuantity(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'number' && Number.isInteger(value) && !Number.isNaN(value)) return value;
+  if (typeof value === 'string') {
+    const n = parseInt(value, 10);
+    return Number.isNaN(n) ? null : n;
+  }
+  return null;
+}
+
+function validateProductStock(
+  data: Record<string, unknown>,
+  isCreate: boolean,
+): { isUnlimited: boolean; stockQuantity: number | null } {
+  const isUnlimited = data.isUnlimited === true || data.isUnlimited === 'true';
+  const rawQty = toStockQuantity(data.stockQuantity);
+
+  if (isUnlimited) {
+    return { isUnlimited: true, stockQuantity: null };
+  }
+
+  if (isCreate) {
+    if (rawQty === null || rawQty < 0) {
+      throw new BadRequestException('Estoque obrigatório para produto limitado.');
+    }
+    return { isUnlimited: false, stockQuantity: rawQty };
+  }
+
+  if (data.isUnlimited === false || data.isUnlimited === 'false' || data.stockQuantity !== undefined) {
+    if (rawQty === null || rawQty < 0) {
+      throw new BadRequestException('Estoque obrigatório para produto limitado.');
+    }
+    return { isUnlimited: false, stockQuantity: rawQty };
+  }
+
+  return { isUnlimited: false, stockQuantity: null };
+}
+
 function validateProductDecimals(
   data: Record<string, unknown>,
   isCreate: boolean,
@@ -129,33 +167,61 @@ export class ProductsService {
     if (!storeId) {
       throw new NotFoundException('Store ID is required');
     }
-    validateProductDecimals(data as Record<string, unknown>, true);
-    const { storeId: _ignored, ...rest } = data as any;
+    const raw = data as Record<string, unknown>;
+    validateProductDecimals(raw, true);
+    const { isUnlimited, stockQuantity } = validateProductStock(raw, true);
+    const { storeId: _ignored, stockQuantity: _sq, isUnlimited: _iu, ...rest } = data as any;
     const product = await this.prisma.product.create({
       data: {
         ...rest,
         storeId: storeId,
         isActive: true,
+        isUnlimited,
+        stockQuantity: isUnlimited ? null : stockQuantity,
       } as Prisma.ProductUncheckedCreateInput,
       include: {
-        stock: true,
+        stock: { where: { storeId } },
       },
     });
 
-    return product;
+    if (!isUnlimited && stockQuantity !== null) {
+      await this.prisma.stock.upsert({
+        where: {
+          productId_storeId: { productId: product.id, storeId },
+        },
+        create: {
+          productId: product.id,
+          storeId,
+          quantity: stockQuantity,
+        },
+        update: { quantity: stockQuantity },
+      });
+    }
+
+    return this.prisma.product.findFirst({
+      where: { id: product.id, storeId },
+      include: { stock: { where: { storeId } } },
+    }) as Promise<Product>;
   }
 
   async update(id: string, data: UpdateProductDto, storeId?: string): Promise<Product> {
     if (!storeId) {
       throw new NotFoundException('Store ID is required');
     }
-    validateProductDecimals(data as Record<string, unknown>, false);
-    const { storeId: _ignored, ...rest } = data as any;
+    const raw = data as Record<string, unknown>;
+    validateProductDecimals(raw, false);
+
+    const updatePayload: Record<string, unknown> = { ...raw };
+    delete updatePayload.storeId;
+    if (raw.isUnlimited !== undefined || raw.stockQuantity !== undefined) {
+      const { isUnlimited, stockQuantity } = validateProductStock(raw, false);
+      updatePayload.isUnlimited = isUnlimited;
+      updatePayload.stockQuantity = isUnlimited ? null : stockQuantity;
+    }
+
     const result = await this.prisma.product.updateMany({
       where: { id, storeId },
-      data: {
-        ...rest,
-      } as Prisma.ProductUncheckedUpdateInput,
+      data: updatePayload as Prisma.ProductUncheckedUpdateInput,
     });
     if (result.count === 0) {
       throw new NotFoundException(`Product with ID ${id} not found in your store`);
@@ -169,6 +235,21 @@ export class ProductsService {
     if (!updatedProduct) {
       throw new NotFoundException(`Product with ID ${id} not found in your store`);
     }
+
+    if (!updatedProduct.isUnlimited && updatedProduct.stockQuantity !== null) {
+      await this.prisma.stock.upsert({
+        where: {
+          productId_storeId: { productId: id, storeId },
+        },
+        create: {
+          productId: id,
+          storeId,
+          quantity: updatedProduct.stockQuantity,
+        },
+        update: { quantity: updatedProduct.stockQuantity },
+      });
+    }
+
     return updatedProduct;
   }
 

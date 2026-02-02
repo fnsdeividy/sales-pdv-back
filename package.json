@@ -71,7 +71,10 @@
     "xml-crypto": "^6.1.2"
   },
   "devDependencies": {
+    "@nestjs/testing": "^11.1.12",
+    "@types/jest": "^30.0.0",
     "@types/pdfkit": "^0.17.4",
+    "@types/supertest": "^6.0.3",
     "ts-loader": "^9.5.4",
     "ts-node": "^10.9.2"
   }

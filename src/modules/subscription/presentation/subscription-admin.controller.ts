@@ -112,6 +112,7 @@ export class SubscriptionAdminController {
       where: { storeId },
     });
 
+    // Ativação manual: trial encerrado imediatamente; status único ACTIVE.
     const subscription = await this.prisma.storeSubscription.upsert({
       where: { storeId },
       update: {
