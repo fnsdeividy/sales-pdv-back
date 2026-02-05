@@ -225,6 +225,8 @@ export class SubscriptionService {
         return 'Plano Start';
       case 'pro':
         return 'Plano Pro';
+      case 'premium':
+        return 'Plano Premium';
       case 'enterprise':
         return 'Plano Enterprise';
       default:
