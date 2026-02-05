@@ -495,6 +495,11 @@ export class CostCalculationService {
     packagingCostPerUnit?: number,
     overheadPercent?: number
   ): Promise<number> {
+    const parsedMarkup =
+      typeof (markupPercent as any) === 'string'
+        ? parseFloat(markupPercent as any)
+        : markupPercent;
+    const safeMarkup = Number.isFinite(parsedMarkup) ? parsedMarkup : 0;
     // Try dynamic calculation first
     try {
       const unitCost = await this.calculateCurrentUnitCost(
@@ -504,7 +509,7 @@ export class CostCalculationService {
         packagingCostPerUnit,
         overheadPercent
       );
-      return unitCost * (1 + markupPercent / 100);
+      return unitCost * (1 + safeMarkup / 100);
     } catch (error) {
       // Fallback to cache if dynamic calculation fails
       const costCache = await this.prisma.productCostCache.findUnique({
@@ -512,13 +517,23 @@ export class CostCalculationService {
       });
 
       if (!costCache) {
-        throw new BadRequestException(
-          `No cost information available for product ${productId}. Please ensure the product has a BOM configured or complete a production order first.`
-        );
+        const product = await this.prisma.product.findUnique({
+          where: { id: productId },
+          select: { costPrice: true },
+        });
+
+        if (!product?.costPrice) {
+          throw new BadRequestException(
+            `No cost information available for product ${productId}. Please ensure the product has a BOM configured, a production order completed, or a cost price set.`
+          );
+        }
+
+        const unitCost = toNumber(product.costPrice);
+        return unitCost * (1 + safeMarkup / 100);
       }
 
       const unitCost = toNumber(costCache.unitCost);
-      return unitCost * (1 + markupPercent / 100);
+      return unitCost * (1 + safeMarkup / 100);
     }
   }
 

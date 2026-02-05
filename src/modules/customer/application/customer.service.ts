@@ -77,7 +77,87 @@ export class CustomerService {
     };
   }
 
+  async search(
+    params: { name?: string; email?: string; phone?: string },
+    storeId: string,
+  ) {
+    // #region agent log
+    fetch('http://127.0.0.1:7251/ingest/1e176226-6578-43f9-889c-e98ee7f619a4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'customers-search',
+        hypothesisId: 'H2',
+        location: 'customer.service.ts:search',
+        message: 'CustomerService.search called',
+        data: { hasStoreId: !!storeId, params },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => { });
+    // #endregion
+
+    if (!storeId) {
+      throw new NotFoundException('Store ID is required');
+    }
+
+    const { name, email, phone } = params;
+
+    // Se nenhum critério foi informado, retornar lista vazia para evitar buscar tudo.
+    if (!name && !email && !phone) {
+      return [];
+    }
+
+    const where: any = {
+      storeId,
+    };
+
+    const orConditions: any[] = [];
+
+    if (name) {
+      orConditions.push(
+        { firstName: { contains: name, mode: 'insensitive' } },
+        { lastName: { contains: name, mode: 'insensitive' } },
+        { email: { contains: name, mode: 'insensitive' } },
+      );
+    }
+
+    if (email) {
+      orConditions.push({ email: { contains: email, mode: 'insensitive' } });
+    }
+
+    if (phone) {
+      orConditions.push({ phone: { contains: phone, mode: 'insensitive' } });
+    }
+
+    if (orConditions.length > 0) {
+      where.OR = orConditions;
+    }
+
+    return this.prisma.customer.findMany({
+      where,
+      orderBy: { firstName: 'asc' },
+      take: 50,
+    });
+  }
+
   async findById(id: string, storeId: string) {
+    // #region agent log
+    fetch('http://127.0.0.1:7251/ingest/1e176226-6578-43f9-889c-e98ee7f619a4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'customers-search',
+        hypothesisId: 'H3',
+        location: 'customer.service.ts:findById',
+        message: 'CustomerService.findById called',
+        data: { id, hasStoreId: !!storeId },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => { });
+    // #endregion
+
     if (!storeId) {
       throw new NotFoundException('Store ID is required');
     }

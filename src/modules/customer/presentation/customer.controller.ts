@@ -50,6 +50,43 @@ export class CustomerController {
     return this.customerService.findAll(pageNum, limitNum, filters, user.storeId);
   }
 
+  @Get('search')
+  async search(
+    @CurrentUser() user: any,
+    @Query('name') name?: string,
+    @Query('email') email?: string,
+    @Query('phone') phone?: string,
+  ) {
+    // #region agent log
+    fetch('http://127.0.0.1:7251/ingest/1e176226-6578-43f9-889c-e98ee7f619a4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'customers-search',
+        hypothesisId: 'H1',
+        location: 'customer.controller.ts:search',
+        message: 'CustomerController.search called',
+        data: { hasStoreId: !!user?.storeId, name, email, phone },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => { });
+    // #endregion
+
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+
+    return this.customerService.search(
+      {
+        name,
+        email,
+        phone,
+      },
+      user.storeId,
+    );
+  }
+
   @Get('statistics')
   async getStatistics(@CurrentUser() user: any) {
     if (!user?.storeId) {
@@ -59,10 +96,45 @@ export class CustomerController {
   }
 
   @Get(':id')
-  async findById(@Param('id') id: string, @CurrentUser() user: any) {
+  async findById(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Query('name') name?: string,
+    @Query('email') email?: string,
+    @Query('phone') phone?: string,
+  ) {
+    // #region agent log
+    fetch('http://127.0.0.1:7251/ingest/1e176226-6578-43f9-889c-e98ee7f619a4', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'debug-session',
+        runId: 'customers-search',
+        hypothesisId: 'H1',
+        location: 'customer.controller.ts:findById',
+        message: 'CustomerController.findById called',
+        data: { id, hasStoreId: !!user?.storeId, name, email, phone },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => { });
+    // #endregion
+
     if (!user?.storeId) {
       throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
     }
+
+    // Compatibilidade: se a rota bater em /customers/search, tratar como busca em vez de buscar por ID literal "search"
+    if (id === 'search') {
+      return this.customerService.search(
+        {
+          name,
+          email,
+          phone,
+        },
+        user.storeId,
+      );
+    }
+
     return this.customerService.findById(id, user.storeId);
   }
 
