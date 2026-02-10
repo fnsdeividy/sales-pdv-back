@@ -24,7 +24,7 @@ export class NfeService {
     private readonly subscriptionService: SubscriptionService,
   ) {}
 
-  async emitirNfeParaOrder(orderId: string, storeId: string) {
+  async emitirNfeParaOrder(orderId: string, storeId: string, modelo: '55' | '65' = '55') {
     await this.ensureStoreHasActiveSubscription(storeId);
 
     const order = await this.prisma.order.findFirst({
@@ -46,7 +46,7 @@ export class NfeService {
     }
 
     if (this.config.provider === 'nuvemfiscal') {
-      return this.emitirNfeViaNuvemFiscal(order, storeId);
+      return this.emitirNfeViaNuvemFiscal(order, storeId, modelo);
     }
 
     const numero = await this.repository.getNextNumero(storeId, this.config.numeroInicial);
@@ -59,7 +59,7 @@ export class NfeService {
       numero,
       serie,
       uf: this.config.uf,
-      modelo: this.config.modelo,
+      modelo: modelo,
       ambiente: this.config.ambiente,
       status: 'PENDENTE_ENVIO',
       xmlAssinado,
@@ -200,9 +200,9 @@ export class NfeService {
     });
   }
 
-  private async emitirNfeViaNuvemFiscal(order: NfeOrderInput, storeId: string) {
+  private async emitirNfeViaNuvemFiscal(order: NfeOrderInput, storeId: string, modelo: '55' | '65' = '55') {
     const numero = await this.repository.getNextNumero(storeId, this.config.numeroInicial);
-    const { payload, chaveAcesso } = this.nuvemFiscalBuilder.build(order, numero, this.config.serie);
+    const { payload, chaveAcesso } = this.nuvemFiscalBuilder.build(order, numero, this.config.serie, modelo);
 
     const dfe = await this.nuvemFiscalClient.emitirNfe(payload as unknown as Record<string, unknown>);
     if (!dfe.id) {
@@ -218,7 +218,7 @@ export class NfeService {
       numero: dfe.numero ?? numero,
       serie: String(dfe.serie ?? this.config.serie),
       uf: this.config.uf,
-      modelo: String(dfe.modelo ?? this.config.modelo),
+      modelo: String(dfe.modelo ?? modelo),
       ambiente: this.config.ambiente,
       status,
       recibo: null,

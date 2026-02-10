@@ -25,14 +25,14 @@ export interface BuildNuvemFiscalNfeResult {
 export class NuvemFiscalNfeBuilder {
   constructor(private readonly config: NfeConfig) {}
 
-  build(order: NfeOrderInput, numero: number, serie: string): BuildNuvemFiscalNfeResult {
+  build(order: NfeOrderInput, numero: number, serie: string, modelo: '55' | '65' = '55'): BuildNuvemFiscalNfeResult {
     const dataEmissao = new Date();
     const codigoNumerico = generateRandomCodigoNumerico();
     const chaveAcesso = generateNfeAccessKey({
       ufCodigo: this.config.ufCodigo,
       dataEmissao,
       cnpj: this.config.emitente.cnpj,
-      modelo: this.config.modelo,
+      modelo: modelo,
       serie,
       numero,
       tipoEmissao: this.config.fiscal.tpEmis,
@@ -121,20 +121,20 @@ export class NuvemFiscalNfeBuilder {
         cUF: Number(this.config.ufCodigo),
         cNF: codigoNumerico,
         natOp: this.config.fiscal.natOp,
-        mod: Number(this.config.modelo),
+        mod: Number(modelo),
         serie: Number(serie),
         nNF: numero,
         dhEmi: toIsoDateTime(dataEmissao),
         tpNF: 1,
         idDest: 1,
         cMunFG: emit.endereco.municipioCodigo,
-        tpImp: 1,
+        tpImp: modelo === '65' ? 4 : 1, // NFC-e usa tpImp = 4 (DANFE NFC-e), NF-e usa 1
         tpEmis: Number(this.config.fiscal.tpEmis),
         cDV: Number(chaveAcesso.slice(-1)),
         tpAmb: this.config.ambiente === 'homolog' ? 2 : 1,
         finNFe: 1,
-        indFinal: 1,
-        indPres: 1,
+        indFinal: modelo === '65' ? 1 : (dest ? 1 : 1), // NFC-e sempre consumidor final
+        indPres: modelo === '65' ? 1 : 1, // 1 = Operação presencial
         procEmi: 0,
         verProc: 'sales-pdv-back',
       },

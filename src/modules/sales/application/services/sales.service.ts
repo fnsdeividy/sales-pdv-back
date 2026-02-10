@@ -1,12 +1,14 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Sale } from '@modules/sales/entities/sale.entity';
 import { ISalesService, ISalesRepository, SALES_REPOSITORY } from '@modules/sales/presentation/interfaces/sales.interface';
+import { NfeService } from '@modules/nfe/application/services/nfe.service';
 
 @Injectable()
 export class SalesService implements ISalesService {
   constructor(
     @Inject(SALES_REPOSITORY)
-    private readonly salesRepository: ISalesRepository
+    private readonly salesRepository: ISalesRepository,
+    private readonly nfeService: NfeService,
   ) { }
 
   async findAll(page: number = 1, limit: number = 10, storeId?: string): Promise<{ sales: Sale[]; total: number; totalPages: number }> {
@@ -48,11 +50,57 @@ export class SalesService implements ISalesService {
     return this.salesRepository.findByStoreId(storeId, page, limit);
   }
 
-  async create(data: Partial<Sale>): Promise<Sale> {
+  async create(data: Partial<Sale> & { emitirNotaFiscal?: boolean; tipoNota?: 'NFCE' | 'NFE'; valorRecebido?: number }): Promise<Sale & { notaFiscalId?: string; statusNota?: string; urlDanfe?: string }> {
     if (!data.storeId) {
       throw new NotFoundException('Store ID is required');
     }
-    return await this.salesRepository.create(data);
+
+    // Validação: NF-e exige customerId
+    if (data.emitirNotaFiscal && data.tipoNota === 'NFE' && !data.customerId) {
+      throw new BadRequestException('NF-e exige que um cliente seja selecionado.');
+    }
+
+    // Criar a venda (Order)
+    const sale = await this.salesRepository.create(data);
+
+    // Se emitirNotaFiscal = true, chamar o NfeService
+    let notaFiscalId: string | undefined;
+    let statusNota: string | undefined;
+    let urlDanfe: string | undefined;
+
+    if (data.emitirNotaFiscal) {
+      try {
+        const modelo = data.tipoNota === 'NFE' ? '55' : '65';
+        
+        if (data.tipoNota === 'NFE') {
+          const nfeDocument = await this.nfeService.emitirNfeParaOrder(sale.id, data.storeId, modelo);
+          notaFiscalId = nfeDocument.id;
+          statusNota = nfeDocument.status;
+          // urlDanfe pode ser construído com base no xmlAutorizado ou outro endpoint
+          // Por simplicidade, vamos retornar um campo vazio por enquanto
+          // Em produção, seria necessário gerar/expor URL do DANFE
+          urlDanfe = nfeDocument.xmlAutorizado ? `/api/v1/nfe/${nfeDocument.id}/danfe` : undefined;
+        } else if (data.tipoNota === 'NFCE') {
+          // Emitir NFC-e usando modelo 65
+          const nfceDocument = await this.nfeService.emitirNfeParaOrder(sale.id, data.storeId, modelo);
+          notaFiscalId = nfceDocument.id;
+          statusNota = nfceDocument.status;
+          urlDanfe = nfceDocument.xmlAutorizado ? `/api/v1/nfe/${nfceDocument.id}/danfe` : undefined;
+        }
+      } catch (error) {
+        // Se falhar a emissão da nota, a venda já foi criada
+        // Logar o erro e retornar a venda sem nota
+        console.error('Erro ao emitir nota fiscal:', error);
+        throw new BadRequestException(`Venda criada, mas erro ao emitir nota: ${error.message}`);
+      }
+    }
+
+    return {
+      ...sale,
+      notaFiscalId,
+      statusNota,
+      urlDanfe,
+    };
   }
 
   async update(id: string, data: Partial<Sale>, storeId?: string): Promise<void> {
