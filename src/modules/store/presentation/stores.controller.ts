@@ -10,6 +10,7 @@ import {
   Query,
   HttpStatus,
   HttpCode,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { StoresService } from '../application/stores.service';
 import { CurrentUser } from '../../../shared/decorators/current-user.decorator';
@@ -60,6 +61,14 @@ export class StoresController {
     return this.storesService.getStatistics(user.storeId);
   }
 
+  @Get('fiscal-status')
+  async getFiscalStatus(@CurrentUser() user: any) {
+    if (!user?.storeId) {
+      throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
+    }
+    return this.storesService.getFiscalStatus(user.storeId);
+  }
+
   @Get('by-city/:city')
   async findByCity(@Param('city') city: string) {
     return this.storesService.findByCity(city);
@@ -94,7 +103,10 @@ export class StoresController {
   }
 
   @Get(':id')
-  async findById(@Param('id') id: string, @CurrentUser() user: any) {
+  async findById(
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @CurrentUser() user: any,
+  ) {
     if (!user?.storeId) {
       throw new Error('StoreId não encontrado. Usuário não está associado a uma loja.');
     }

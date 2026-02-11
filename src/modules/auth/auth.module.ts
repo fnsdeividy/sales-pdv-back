@@ -6,11 +6,13 @@ import { AuthService } from './application/auth.service';
 import { JwtStrategy } from './application/jwt.strategy';
 import { UserModule } from '../user/user.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
     UserModule,
     PrismaModule,
+    MailModule,
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') || 'your-secret-key',

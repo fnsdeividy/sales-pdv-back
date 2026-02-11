@@ -25,6 +25,10 @@ export class Sale {
   discount: number | null;
   taxAmount: number | null;
   paymentMethod: 'credit_card' | 'debit_card' | 'cash' | 'pix' | 'transfer';
+  documentType?: 'NON_FISCAL' | 'NFC_E' | 'SAT';
+  documentNumber?: string | null;
+  documentIssuedAt?: Date | null;
+  isFiscal?: boolean;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;

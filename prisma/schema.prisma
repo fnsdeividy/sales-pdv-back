@@ -16,6 +16,12 @@ enum StoreType {
   kiosk
 }
 
+enum DocumentType {
+  NON_FISCAL
+  NFC_E
+  SAT
+}
+
 model User {
   id            String   @id @default(uuid())
   email         String   @unique
@@ -26,6 +32,8 @@ model User {
   isActive      Boolean  @default(true) @map("is_active")
   emailVerified Boolean  @default(false) @map("email_verified")
   storeId       String?  @map("store_id")
+  passwordResetToken   String?   @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -50,6 +58,9 @@ model Store {
   country     String?
   phone       String?
   email       String?
+  cnpj        String?
+  certificadoConfigurado Boolean @default(false) @map("certificado_configurado")
+  lastNonFiscalNumber Int @default(0) @map("last_non_fiscal_number")
   type        StoreType @default(branch)
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
@@ -204,6 +215,10 @@ model Order {
   tax           Decimal? @map("tax") @db.Decimal(10, 2)
   status        String   @default("pending")
   paymentMethod String   @default("cash") @map("payment_method")
+  documentType  DocumentType @default(NON_FISCAL) @map("document_type")
+  documentNumber String? @map("document_number")
+  documentIssuedAt DateTime? @map("document_issued_at")
+  isFiscal      Boolean @default(false) @map("is_fiscal")
   notes         String?
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")

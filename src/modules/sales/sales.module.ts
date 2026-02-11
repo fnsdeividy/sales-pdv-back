@@ -4,10 +4,12 @@ import { SalesCompatController } from './presentation/http/controllers/sales-com
 import { SalesService } from './application/services/sales.service';
 import { SalesRepository } from './infra/repositories/sales.repository';
 import { PrismaModule } from '@modules/prisma/prisma.module';
+import { NfeModule } from '@modules/nfe/nfe.module';
+import { StoresModule } from '@modules/store/stores.module';
 import { SALES_REPOSITORY } from './presentation/interfaces/sales.interface';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, NfeModule, StoresModule],
   controllers: [SalesController, SalesCompatController],
   providers: [
     SalesService,

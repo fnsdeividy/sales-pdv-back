@@ -2,6 +2,7 @@ import { Injectable, Inject, NotFoundException, BadRequestException } from '@nes
 import { Sale } from '@modules/sales/entities/sale.entity';
 import { ISalesService, ISalesRepository, SALES_REPOSITORY } from '@modules/sales/presentation/interfaces/sales.interface';
 import { NfeService } from '@modules/nfe/application/services/nfe.service';
+import { StoresService } from '@modules/store/application/stores.service';
 
 @Injectable()
 export class SalesService implements ISalesService {
@@ -9,6 +10,7 @@ export class SalesService implements ISalesService {
     @Inject(SALES_REPOSITORY)
     private readonly salesRepository: ISalesRepository,
     private readonly nfeService: NfeService,
+    private readonly storesService: StoresService,
   ) { }
 
   async findAll(page: number = 1, limit: number = 10, storeId?: string): Promise<{ sales: Sale[]; total: number; totalPages: number }> {
@@ -55,20 +57,35 @@ export class SalesService implements ISalesService {
       throw new NotFoundException('Store ID is required');
     }
 
+    const fiscalStatus = await this.storesService.getFiscalStatus(data.storeId);
+    const isCompletedSale = (data.status || 'pending') === 'completed';
+    const canIssueFiscal = fiscalStatus.isFiscalEnabled && !!data.emitirNotaFiscal && isCompletedSale;
+
     // Validação: NF-e exige customerId
-    if (data.emitirNotaFiscal && data.tipoNota === 'NFE' && !data.customerId) {
+    if (canIssueFiscal && data.tipoNota === 'NFE' && !data.customerId) {
       throw new BadRequestException('NF-e exige que um cliente seja selecionado.');
     }
 
+    const salePayload: Partial<Sale> = {
+      ...data,
+      ...(isCompletedSale
+        ? {
+            documentType: canIssueFiscal ? 'NFC_E' : 'NON_FISCAL',
+            documentIssuedAt: new Date(),
+            isFiscal: canIssueFiscal,
+          }
+        : {}),
+    };
+
     // Criar a venda (Order)
-    const sale = await this.salesRepository.create(data);
+    const sale = await this.salesRepository.create(salePayload);
 
     // Se emitirNotaFiscal = true, chamar o NfeService
     let notaFiscalId: string | undefined;
     let statusNota: string | undefined;
     let urlDanfe: string | undefined;
 
-    if (data.emitirNotaFiscal) {
+    if (canIssueFiscal) {
       try {
         const modelo = data.tipoNota === 'NFE' ? '55' : '65';
         
@@ -76,6 +93,12 @@ export class SalesService implements ISalesService {
           const nfeDocument = await this.nfeService.emitirNfeParaOrder(sale.id, data.storeId, modelo);
           notaFiscalId = nfeDocument.id;
           statusNota = nfeDocument.status;
+          await this.salesRepository.update(sale.id, {
+            documentType: 'NFC_E',
+            documentNumber: String(nfeDocument.numero),
+            documentIssuedAt: new Date(),
+            isFiscal: true,
+          });
           // urlDanfe pode ser construído com base no xmlAutorizado ou outro endpoint
           // Por simplicidade, vamos retornar um campo vazio por enquanto
           // Em produção, seria necessário gerar/expor URL do DANFE
@@ -85,6 +108,12 @@ export class SalesService implements ISalesService {
           const nfceDocument = await this.nfeService.emitirNfeParaOrder(sale.id, data.storeId, modelo);
           notaFiscalId = nfceDocument.id;
           statusNota = nfceDocument.status;
+          await this.salesRepository.update(sale.id, {
+            documentType: 'NFC_E',
+            documentNumber: String(nfceDocument.numero),
+            documentIssuedAt: new Date(),
+            isFiscal: true,
+          });
           urlDanfe = nfceDocument.xmlAutorizado ? `/api/v1/nfe/${nfceDocument.id}/danfe` : undefined;
         }
       } catch (error) {
@@ -95,8 +124,10 @@ export class SalesService implements ISalesService {
       }
     }
 
+    const saleWithDocuments = await this.salesRepository.findById(sale.id, data.storeId);
+
     return {
-      ...sale,
+      ...(saleWithDocuments || sale),
       notaFiscalId,
       statusNota,
       urlDanfe,

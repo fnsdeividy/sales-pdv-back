@@ -88,11 +88,36 @@ const requireValue = (value: string | undefined, name: string): string => {
   return value;
 };
 
+/** Valores padrão para desenvolvimento quando NFe não está configurado */
+const NFE_DEV_DEFAULTS = {
+  NFE_EMIT_CNPJ: '00000000000191',
+  NFE_EMIT_IE: '000000000000',
+  NFE_EMIT_RAZAO: 'Empresa Desenvolvimento',
+  NFE_EMIT_LOGRADOURO: 'Rua Exemplo',
+  NFE_EMIT_NUMERO: '1',
+  NFE_EMIT_BAIRRO: 'Centro',
+  NFE_EMIT_MUN_CODIGO: '3304557',
+  NFE_EMIT_MUN_NOME: 'Rio de Janeiro',
+  NFE_EMIT_CEP: '20000000',
+  NFE_DEST_DOC_PADRAO: '00000000000191',
+  NFE_DEST_NOME_PADRAO: 'Consumidor Final',
+};
+
+const getOrDevDefault = (
+  configService: ConfigService,
+  key: keyof typeof NFE_DEV_DEFAULTS,
+  strict = false,
+): string => {
+  const value = configService.get<string>(key);
+  if (value) return value;
+  if (strict) return requireValue(undefined, key);
+  return NFE_DEV_DEFAULTS[key];
+};
+
 export const getNfeConfig = (configService: ConfigService): NfeConfig => {
   const provider = (configService.get<string>('NFE_PROVIDER') || 'sefaz') as NfeProvider;
   const ambiente = (configService.get<string>('NFE_ENV') || 'homolog') as 'homolog' | 'producao';
-  const requireWhen = (condition: boolean, value: string | undefined, name: string): string | undefined =>
-    condition ? requireValue(value, name) : value;
+  const nfeEnabled = configService.get<string>('NFE_ENABLED') === 'true';
 
   return {
     provider,
@@ -106,30 +131,34 @@ export const getNfeConfig = (configService: ConfigService): NfeConfig => {
     consultaAutomatica: (configService.get<string>('NFE_CONSULTA_AUTOMATICA') || 'true') === 'true',
     consultaMaxTentativas: Number(configService.get<string>('NFE_CONSULTA_MAX_TENTATIVAS') || '10'),
     consultaIntervaloMs: Number(configService.get<string>('NFE_CONSULTA_INTERVALO_MS') || '3000'),
-    certificadoPfxPath: requireWhen(provider === 'sefaz', configService.get<string>('NFE_CERT_PFX_PATH'), 'NFE_CERT_PFX_PATH'),
-    certificadoPfxSenha: requireWhen(provider === 'sefaz', configService.get<string>('NFE_CERT_PFX_PASSWORD'), 'NFE_CERT_PFX_PASSWORD'),
+    certificadoPfxPath: (provider === 'sefaz' && nfeEnabled)
+      ? requireValue(configService.get<string>('NFE_CERT_PFX_PATH'), 'NFE_CERT_PFX_PATH')
+      : configService.get<string>('NFE_CERT_PFX_PATH') || '',
+    certificadoPfxSenha: (provider === 'sefaz' && nfeEnabled)
+      ? requireValue(configService.get<string>('NFE_CERT_PFX_PASSWORD'), 'NFE_CERT_PFX_PASSWORD')
+      : configService.get<string>('NFE_CERT_PFX_PASSWORD') || '',
     emitente: {
-      cnpj: requireValue(configService.get<string>('NFE_EMIT_CNPJ'), 'NFE_EMIT_CNPJ'),
-      ie: requireValue(configService.get<string>('NFE_EMIT_IE'), 'NFE_EMIT_IE'),
-      razaoSocial: requireValue(configService.get<string>('NFE_EMIT_RAZAO'), 'NFE_EMIT_RAZAO'),
+      cnpj: getOrDevDefault(configService, 'NFE_EMIT_CNPJ', nfeEnabled),
+      ie: getOrDevDefault(configService, 'NFE_EMIT_IE', nfeEnabled),
+      razaoSocial: getOrDevDefault(configService, 'NFE_EMIT_RAZAO', nfeEnabled),
       nomeFantasia: configService.get<string>('NFE_EMIT_FANTASIA') || 'Emitente',
       crt: configService.get<string>('NFE_EMIT_CRT') || '1',
       endereco: {
-        logradouro: requireValue(configService.get<string>('NFE_EMIT_LOGRADOURO'), 'NFE_EMIT_LOGRADOURO'),
-        numero: requireValue(configService.get<string>('NFE_EMIT_NUMERO'), 'NFE_EMIT_NUMERO'),
-        bairro: requireValue(configService.get<string>('NFE_EMIT_BAIRRO'), 'NFE_EMIT_BAIRRO'),
-        municipioCodigo: requireValue(configService.get<string>('NFE_EMIT_MUN_CODIGO'), 'NFE_EMIT_MUN_CODIGO'),
-        municipioNome: requireValue(configService.get<string>('NFE_EMIT_MUN_NOME'), 'NFE_EMIT_MUN_NOME'),
+        logradouro: getOrDevDefault(configService, 'NFE_EMIT_LOGRADOURO', nfeEnabled),
+        numero: getOrDevDefault(configService, 'NFE_EMIT_NUMERO', nfeEnabled),
+        bairro: getOrDevDefault(configService, 'NFE_EMIT_BAIRRO', nfeEnabled),
+        municipioCodigo: getOrDevDefault(configService, 'NFE_EMIT_MUN_CODIGO', nfeEnabled),
+        municipioNome: getOrDevDefault(configService, 'NFE_EMIT_MUN_NOME', nfeEnabled),
         uf: configService.get<string>('NFE_EMIT_UF') || 'RJ',
-        cep: requireValue(configService.get<string>('NFE_EMIT_CEP'), 'NFE_EMIT_CEP'),
+        cep: getOrDevDefault(configService, 'NFE_EMIT_CEP', nfeEnabled),
         paisCodigo: configService.get<string>('NFE_EMIT_PAIS_CODIGO') || '1058',
         paisNome: configService.get<string>('NFE_EMIT_PAIS_NOME') || 'BRASIL',
         telefone: configService.get<string>('NFE_EMIT_FONE') || undefined,
       },
     },
     destinatarioPadrao: {
-      documento: requireValue(configService.get<string>('NFE_DEST_DOC_PADRAO'), 'NFE_DEST_DOC_PADRAO'),
-      nome: requireValue(configService.get<string>('NFE_DEST_NOME_PADRAO'), 'NFE_DEST_NOME_PADRAO'),
+      documento: getOrDevDefault(configService, 'NFE_DEST_DOC_PADRAO', nfeEnabled),
+      nome: getOrDevDefault(configService, 'NFE_DEST_NOME_PADRAO', nfeEnabled),
       indIeDest: configService.get<string>('NFE_DEST_IND_IE') || '9',
       email: configService.get<string>('NFE_DEST_EMAIL_PADRAO') || undefined,
     },
@@ -147,9 +176,15 @@ export const getNfeConfig = (configService: ConfigService): NfeConfig => {
     },
     soap: provider === 'sefaz'
       ? {
-        envioLoteUrl: requireValue(configService.get<string>('NFE_WS_ENVIO_LOTE_URL'), 'NFE_WS_ENVIO_LOTE_URL'),
-        consultaReciboUrl: requireValue(configService.get<string>('NFE_WS_CONSULTA_RECIBO_URL'), 'NFE_WS_CONSULTA_RECIBO_URL'),
-        consultaNfeUrl: requireValue(configService.get<string>('NFE_WS_CONSULTA_NFE_URL'), 'NFE_WS_CONSULTA_NFE_URL'),
+        envioLoteUrl: nfeEnabled
+          ? requireValue(configService.get<string>('NFE_WS_ENVIO_LOTE_URL'), 'NFE_WS_ENVIO_LOTE_URL')
+          : configService.get<string>('NFE_WS_ENVIO_LOTE_URL') || 'https://nfe-homologacao.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.00.asmx',
+        consultaReciboUrl: nfeEnabled
+          ? requireValue(configService.get<string>('NFE_WS_CONSULTA_RECIBO_URL'), 'NFE_WS_CONSULTA_RECIBO_URL')
+          : configService.get<string>('NFE_WS_CONSULTA_RECIBO_URL') || 'https://nfe-homologacao.svrs.rs.gov.br/ws/NfeRetRecepcao/NfeRetRecepcao4.00.asmx',
+        consultaNfeUrl: nfeEnabled
+          ? requireValue(configService.get<string>('NFE_WS_CONSULTA_NFE_URL'), 'NFE_WS_CONSULTA_NFE_URL')
+          : configService.get<string>('NFE_WS_CONSULTA_NFE_URL') || 'https://nfe-homologacao.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.00.asmx',
       }
       : undefined,
     nuvemFiscal: provider === 'nuvemfiscal'
@@ -158,8 +193,12 @@ export const getNfeConfig = (configService: ConfigService): NfeConfig => {
           configService.get<string>('NUVEM_FISCAL_BASE_URL') ||
           (ambiente === 'homolog' ? 'https://api.sandbox.nuvemfiscal.com.br' : 'https://api.nuvemfiscal.com.br'),
         authUrl: configService.get<string>('NUVEM_FISCAL_AUTH_URL') || 'https://auth.nuvemfiscal.com.br/oauth/token',
-        clientId: requireValue(configService.get<string>('NUVEM_FISCAL_CLIENT_ID'), 'NUVEM_FISCAL_CLIENT_ID'),
-        clientSecret: requireValue(configService.get<string>('NUVEM_FISCAL_CLIENT_SECRET'), 'NUVEM_FISCAL_CLIENT_SECRET'),
+        clientId: nfeEnabled
+          ? requireValue(configService.get<string>('NUVEM_FISCAL_CLIENT_ID'), 'NUVEM_FISCAL_CLIENT_ID')
+          : configService.get<string>('NUVEM_FISCAL_CLIENT_ID') || 'dev-placeholder',
+        clientSecret: nfeEnabled
+          ? requireValue(configService.get<string>('NUVEM_FISCAL_CLIENT_SECRET'), 'NUVEM_FISCAL_CLIENT_SECRET')
+          : configService.get<string>('NUVEM_FISCAL_CLIENT_SECRET') || 'dev-placeholder',
         scope: configService.get<string>('NUVEM_FISCAL_SCOPE') || 'nfe',
         timeoutMs: Number(configService.get<string>('NUVEM_FISCAL_TIMEOUT_MS') || '20000'),
       }

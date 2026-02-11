@@ -314,6 +314,24 @@ export class SalesRepository implements ISalesRepository {
     }
 
     const order = await this.prisma.$transaction(async (tx) => {
+      let documentNumber: string | null = data.documentNumber || null;
+      const isNonFiscal = data.documentType === 'NON_FISCAL';
+      const shouldGenerateNonFiscalNumber =
+        isNonFiscal &&
+        data.status === 'completed' &&
+        !documentNumber;
+
+      if (shouldGenerateNonFiscalNumber) {
+        const updatedStore = await tx.store.update({
+          where: { id: storeId },
+          data: {
+            lastNonFiscalNumber: { increment: 1 },
+          },
+          select: { lastNonFiscalNumber: true },
+        });
+        documentNumber = String(updatedStore.lastNonFiscalNumber).padStart(6, '0');
+      }
+
       const created = await tx.order.create({
         data: {
           orderNumber,
@@ -324,6 +342,10 @@ export class SalesRepository implements ISalesRepository {
           discount: data.discount || 0,
           tax: data.taxAmount || 0,
           paymentMethod: data.paymentMethod || 'cash',
+          documentType: data.documentType || 'NON_FISCAL',
+          documentNumber,
+          documentIssuedAt: data.documentIssuedAt || null,
+          isFiscal: data.isFiscal || false,
           notes: data.notes || '',
           orderItems: {
             create: items.map(item => {
@@ -384,6 +406,10 @@ export class SalesRepository implements ISalesRepository {
         discount: data.discount,
         tax: data.taxAmount,
         paymentMethod: data.paymentMethod,
+        documentType: data.documentType,
+        documentNumber: data.documentNumber,
+        documentIssuedAt: data.documentIssuedAt,
+        isFiscal: data.isFiscal,
         notes: data.notes,
       },
     });
@@ -463,6 +489,10 @@ export class SalesRepository implements ISalesRepository {
       discount: order.discount ? Number(order.discount) : null,
       taxAmount: order.tax ? Number(order.tax) : null,
       paymentMethod: order.paymentMethod || 'cash',
+      documentType: order.documentType,
+      documentNumber: order.documentNumber,
+      documentIssuedAt: order.documentIssuedAt,
+      isFiscal: order.isFiscal,
       notes: order.notes,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,

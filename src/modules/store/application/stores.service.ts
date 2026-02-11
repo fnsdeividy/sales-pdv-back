@@ -1,6 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
+type FiscalDisabledReason = 'trial' | 'no_cnpj' | 'no_certificate' | 'plan_disabled';
+
+interface FiscalStatusResult {
+  isFiscalEnabled: boolean;
+  reason?: FiscalDisabledReason;
+}
+
 @Injectable()
 export class StoresService {
   constructor(private readonly prisma: PrismaService) { }
@@ -104,6 +111,8 @@ export class StoresService {
         country: data.country || 'Brasil',
         phone: data.phone,
         email: data.email,
+        cnpj: data.cnpj ?? null,
+        certificadoConfigurado: data.certificadoConfigurado ?? false,
         type: data.type || 'branch',
         isActive: data.isActive ?? true,
       },
@@ -114,22 +123,82 @@ export class StoresService {
     // Verificar se o id solicitado é o mesmo da loja do usuário
     await this.findById(id, storeId);
 
+    const allowedKeys = [
+      'name', 'description', 'address', 'city', 'state', 'zipCode',
+      'country', 'phone', 'email', 'cnpj', 'certificadoConfigurado', 'type', 'isActive',
+    ] as const;
+    const updateData: Record<string, unknown> = {};
+    for (const key of allowedKeys) {
+      if (data[key] !== undefined) {
+        updateData[key] = data[key];
+      }
+    }
+
     return this.prisma.store.update({
       where: { id },
-      data: {
-        name: data.name,
-        description: data.description,
-        address: data.address,
-        city: data.city,
-        state: data.state,
-        zipCode: data.zipCode,
-        country: data.country,
-        phone: data.phone,
-        email: data.email,
-        type: data.type,
-        isActive: data.isActive,
+      data: updateData,
+    });
+  }
+
+  async getFiscalStatus(storeId: string): Promise<FiscalStatusResult> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: {
+        id: true,
+        cnpj: true,
+        certificadoConfigurado: true,
       },
     });
+
+    if (!store) {
+      throw new NotFoundException(`Store with ID ${storeId} not found`);
+    }
+
+    const subscription = await this.prisma.storeSubscription.findUnique({
+      where: { storeId },
+      select: {
+        status: true,
+        trialEndAt: true,
+        currentPeriodEnd: true,
+        planId: true,
+      },
+    });
+
+    const isTrial = this.isSubscriptionInTrial(subscription);
+    if (isTrial) {
+      return { isFiscalEnabled: false, reason: 'trial' };
+    }
+
+    const storeDocumentDigits = (store.cnpj || '').replace(/\D/g, '');
+    if (!storeDocumentDigits || storeDocumentDigits.length !== 14) {
+      return { isFiscalEnabled: false, reason: 'no_cnpj' };
+    }
+
+    if (!store.certificadoConfigurado) {
+      return { isFiscalEnabled: false, reason: 'no_certificate' };
+    }
+
+    if (!this.planAllowsFiscalEmission(subscription?.planId ?? null)) {
+      return { isFiscalEnabled: false, reason: 'plan_disabled' };
+    }
+
+    return { isFiscalEnabled: true };
+  }
+
+  private planAllowsFiscalEmission(planId: string | null): boolean {
+    if (!planId) return false;
+    // Regra inicial: Start não habilita emissão fiscal.
+    return ['pro', 'premium', 'enterprise'].includes(planId);
+  }
+
+  private isSubscriptionInTrial(subscription: {
+    status: string;
+    trialEndAt: Date | null;
+  } | null): boolean {
+    if (!subscription) return true;
+    if (subscription.status !== 'TRIAL') return false;
+    if (!subscription.trialEndAt) return true;
+    return new Date() <= subscription.trialEndAt;
   }
 
   async delete(id: string, storeId: string) {

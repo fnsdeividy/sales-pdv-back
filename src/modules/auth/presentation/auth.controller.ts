@@ -14,7 +14,12 @@ export class AuthController {
     storeName: string; 
     email: string; 
     whatsapp: string; 
-    password: string; 
+    password: string;
+    cnpj?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
   }) {
     console.log('Tentativa de registro para:', registerDto.email);
     return this.authService.register(
@@ -22,7 +27,12 @@ export class AuthController {
       registerDto.storeName,
       registerDto.email,
       registerDto.whatsapp,
-      registerDto.password
+      registerDto.password,
+      registerDto.cnpj,
+      registerDto.address,
+      registerDto.city,
+      registerDto.state,
+      registerDto.zipCode
     );
   }
 
@@ -44,6 +54,20 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async validateToken(@Body() body: { token: string }) {
     return this.authService.validateToken(body.token);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() body: { email: string }) {
+    return this.authService.forgotPassword(body.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() body: { token: string; newPassword: string }) {
+    return this.authService.resetPassword(body.token, body.newPassword);
   }
 
   // Rota temporária para debug (apenas em desenvolvimento)

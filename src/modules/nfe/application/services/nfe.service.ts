@@ -1,10 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@modules/prisma/prisma.service';
 import { NfeRepository } from '@modules/nfe/infra/repositories/nfe.repository';
 import { NfeOrderInput, NfeXmlBuilder } from '@modules/nfe/infra/xml/nfe-xml.builder';
 import { NfeXmlSigner } from '@modules/nfe/infra/xml/nfe-xml.signer';
 import { NfeSoapClient } from '@modules/nfe/infra/soap/nfe-soap.client';
-import { NfeConfig } from '@modules/nfe/application/config/nfe.config';
+import { NFE_CONFIG, NfeConfig } from '@modules/nfe/application/config/nfe.config';
 import { NfeDocumentEntity, NfeStatus } from '@modules/nfe/domain/entities/nfe-document.entity';
 import { SubscriptionService } from '@modules/subscription/application/subscription.service';
 import { NuvemFiscalClient, NuvemFiscalDfe } from '@modules/nfe/infra/nuvem-fiscal/nuvem-fiscal.client';
@@ -15,7 +15,7 @@ export class NfeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repository: NfeRepository,
-    private readonly config: NfeConfig,
+    @Inject(NFE_CONFIG) private readonly config: NfeConfig,
     private readonly xmlBuilder: NfeXmlBuilder,
     private readonly xmlSigner: NfeXmlSigner,
     private readonly soapClient: NfeSoapClient,

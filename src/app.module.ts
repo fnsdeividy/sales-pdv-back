@@ -24,6 +24,7 @@ import { ProductionModule } from './modules/production/production.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { InvoiceModule } from './modules/invoice/invoice.module';
+import { MailModule } from './modules/mail/mail.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { InvoiceModule } from './modules/invoice/invoice.module';
     CustomerModule,
     SubscriptionModule,
     InvoiceModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],

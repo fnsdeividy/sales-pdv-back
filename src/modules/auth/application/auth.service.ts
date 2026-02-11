@@ -1,13 +1,18 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../../mail/mail.service';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
+
+const PASSWORD_RESET_EXPIRATION_MS = 60 * 60 * 1000; // 1 hora
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private mailService: MailService,
   ) { }
 
   async validateUser(email: string, password: string) {
@@ -136,7 +141,18 @@ export class AuthService {
     }
   }
 
-  async register(ownerName: string, storeName: string, email: string, whatsapp: string, password: string) {
+  async register(
+    ownerName: string,
+    storeName: string,
+    email: string,
+    whatsapp: string,
+    password: string,
+    cnpj?: string,
+    address?: string,
+    city?: string,
+    state?: string,
+    zipCode?: string,
+  ) {
     try {
       // Verificar se o email já está cadastrado
       const existingUser = await this.prisma.user.findUnique({
@@ -171,6 +187,15 @@ export class AuthService {
         throw new BadRequestException('Número do WhatsApp deve ter pelo menos 10 dígitos');
       }
 
+      // Validar CNPJ quando informado
+      const cnpjTrimmed = cnpj?.trim();
+      const cnpjDigits = cnpjTrimmed ? cnpjTrimmed.replace(/\D/g, '') : '';
+      if (cnpjTrimmed) {
+        if (cnpjDigits.length !== 11 && cnpjDigits.length !== 14) {
+          throw new BadRequestException('CPF/CNPJ inválido. Informe 11 ou 14 dígitos.');
+        }
+      }
+
       // Fazer hash da senha
       const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -186,6 +211,11 @@ export class AuthService {
           description: `Loja ${storeName.trim()}`,
           type: 'main',
           isActive: true,
+          cnpj: cnpjDigits || null,
+          address: address?.trim() || null,
+          city: city?.trim() || null,
+          state: state?.trim() || null,
+          zipCode: zipCode?.trim() || null,
         },
       });
 
@@ -284,6 +314,80 @@ export class AuthService {
       console.error('Erro durante o registro:', error);
       throw error;
     }
+  }
+
+  /**
+   * Solicitação de redefinição de senha. Sempre retorna sucesso (mensagem genérica)
+   * para não revelar se o email existe na base.
+   */
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const emailTrimmed = email?.trim()?.toLowerCase();
+    if (!emailTrimmed) {
+      throw new BadRequestException('Email é obrigatório');
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailTrimmed)) {
+      throw new BadRequestException('Digite um email válido');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: emailTrimmed },
+      select: { id: true, email: true },
+    });
+
+    if (user) {
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetExpires = new Date(Date.now() + PASSWORD_RESET_EXPIRATION_MS);
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetToken: resetToken,
+          passwordResetExpires: resetExpires,
+        },
+      });
+      await this.mailService.sendPasswordResetEmail(user.email, resetToken);
+    }
+
+    return {
+      message: 'Se este email estiver cadastrado, você receberá um link para redefinir a senha.',
+    };
+  }
+
+  /**
+   * Redefine a senha usando o token recebido por email.
+   */
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    const tokenTrimmed = token?.trim();
+    if (!tokenTrimmed) {
+      throw new BadRequestException('Token é obrigatório');
+    }
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('Senha deve ter pelo menos 6 caracteres');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        passwordResetToken: tokenTrimmed,
+        passwordResetExpires: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Token inválido ou expirado. Solicite um novo link de redefinição.');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
+
+    return { message: 'Senha alterada com sucesso. Faça login com a nova senha.' };
   }
 
   // Método auxiliar para debug
