@@ -1,5 +1,5 @@
-# Use Node.js official image
-FROM node:18-alpine
+# Use Node.js 20 (exigido por @nestjs/cli e @nestjs/core)
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy package files (apenas npm - não copiar yarn.lock para evitar conflito)
 COPY package.json package-lock.json ./
 
-# Install dependencies (npm ci = reproduzível e mais estável em deploy)
-RUN npm ci
+# Install dependencies sem rodar postinstall (prisma generate roda depois, quando prisma/ existir)
+RUN npm ci --ignore-scripts
 
 # Copy prisma schema
 COPY prisma ./prisma/
