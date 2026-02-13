@@ -4,12 +4,11 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY yarn.lock ./
+# Copy package files (apenas npm - não copiar yarn.lock para evitar conflito)
+COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (npm ci = reproduzível e mais estável em deploy)
+RUN npm ci
 
 # Copy prisma schema
 COPY prisma ./prisma/
