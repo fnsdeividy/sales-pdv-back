@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
-type FiscalDisabledReason = 'trial' | 'no_cnpj' | 'no_certificate' | 'plan_disabled';
+type FiscalDisabledReason = 'pending_payment' | 'no_cnpj' | 'no_certificate' | 'plan_disabled';
 
 interface FiscalStatusResult {
   isFiscalEnabled: boolean;
@@ -158,15 +158,14 @@ export class StoresService {
       where: { storeId },
       select: {
         status: true,
-        trialEndAt: true,
         currentPeriodEnd: true,
         planId: true,
       },
     });
 
-    const isTrial = this.isSubscriptionInTrial(subscription);
-    if (isTrial) {
-      return { isFiscalEnabled: false, reason: 'trial' };
+    const isPending = this.isSubscriptionPendingPayment(subscription);
+    if (isPending) {
+      return { isFiscalEnabled: false, reason: 'pending_payment' };
     }
 
     const storeDocumentDigits = (store.cnpj || '').replace(/\D/g, '');
@@ -191,14 +190,11 @@ export class StoresService {
     return ['pro', 'premium', 'enterprise'].includes(planId);
   }
 
-  private isSubscriptionInTrial(subscription: {
+  private isSubscriptionPendingPayment(subscription: {
     status: string;
-    trialEndAt: Date | null;
   } | null): boolean {
     if (!subscription) return true;
-    if (subscription.status !== 'TRIAL') return false;
-    if (!subscription.trialEndAt) return true;
-    return new Date() <= subscription.trialEndAt;
+    return subscription.status === 'PENDING_PAYMENT';
   }
 
   async delete(id: string, storeId: string) {

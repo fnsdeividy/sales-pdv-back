@@ -87,7 +87,7 @@ export class AsaasWebhookService {
     const nextBillingAt = currentPeriodEnd;
     const externalPlanId = this.resolveExternalPlanId(payment);
 
-    // Pagamento confirmado: trial encerrado imediatamente; status único ACTIVE.
+    // Pagamento confirmado: ativa a assinatura.
     const updatedSubscription = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.storeSubscription.upsert({
         where: { storeId },
@@ -95,8 +95,6 @@ export class AsaasWebhookService {
           status: 'ACTIVE',
           planId,
           planName,
-          trialStartAt: null,
-          trialEndAt: null,
           currentPeriodStart,
           currentPeriodEnd,
           nextBillingAt,
@@ -111,8 +109,6 @@ export class AsaasWebhookService {
           status: 'ACTIVE',
           planId,
           planName,
-          trialStartAt: null,
-          trialEndAt: null,
           currentPeriodStart,
           currentPeriodEnd,
           nextBillingAt,

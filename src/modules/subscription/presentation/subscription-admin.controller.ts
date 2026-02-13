@@ -13,17 +13,12 @@ import { RolesGuard } from '../../../shared/presentation/http/guards/roles.guard
 import { Roles } from '../../../shared/presentation/http/decorators/roles.decorator';
 import { CurrentUser } from '../../../shared/decorators/current-user.decorator';
 
-type AdminSubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'CANCELED';
+type AdminSubscriptionStatus = 'PENDING_PAYMENT' | 'ACTIVE' | 'EXPIRED' | 'CANCELED';
 
 interface ActivateSubscriptionDto {
   planId: string;
   planName?: string;
   periodDays?: number;
-  reason?: string;
-}
-
-interface TrialSubscriptionDto {
-  trialDays?: number;
   reason?: string;
 }
 
@@ -36,62 +31,9 @@ interface CancelSubscriptionDto {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class SubscriptionAdminController {
-  private readonly DEFAULT_TRIAL_DAYS = 7;
   private readonly DEFAULT_PAID_PERIOD_DAYS = 30;
 
   constructor(private readonly prisma: PrismaService) {}
-
-  @Post(':storeId/subscription/trial')
-  @HttpCode(HttpStatus.OK)
-  async startTrial(
-    @Param('storeId') storeId: string,
-    @Body() body: TrialSubscriptionDto,
-    @CurrentUser() user: any,
-  ) {
-    this.ensureSameStoreScope(storeId, user);
-
-    const trialDays = body.trialDays ?? this.DEFAULT_TRIAL_DAYS;
-    const now = new Date();
-    const trialStartAt = now;
-    const trialEndAt = new Date(trialStartAt);
-    trialEndAt.setDate(trialEndAt.getDate() + trialDays);
-
-    const subscription = await this.prisma.storeSubscription.upsert({
-      where: { storeId },
-      update: {
-        status: 'TRIAL',
-        planId: 'start',
-        planName: 'Plano Start',
-        trialStartAt,
-        trialEndAt,
-        currentPeriodStart: trialStartAt,
-        currentPeriodEnd: trialEndAt,
-        canceledAt: null,
-        cancelAtPeriodEnd: false,
-      },
-      create: {
-        storeId,
-        status: 'TRIAL',
-        planId: 'start',
-        planName: 'Plano Start',
-        trialStartAt,
-        trialEndAt,
-        currentPeriodStart: trialStartAt,
-        currentPeriodEnd: trialEndAt,
-      },
-    });
-
-    await this.logAudit({
-      storeId,
-      actorUserId: user.id,
-      fromStatus: null,
-      toStatus: 'TRIAL',
-      planId: subscription.planId,
-      reason: body.reason ?? 'Admin start trial',
-    });
-
-    return subscription;
-  }
 
   @Post(':storeId/subscription/activate')
   @HttpCode(HttpStatus.OK)
@@ -112,7 +54,7 @@ export class SubscriptionAdminController {
       where: { storeId },
     });
 
-    // Ativação manual: trial encerrado imediatamente; status único ACTIVE.
+    // Ativação manual: define status como ACTIVE.
     const subscription = await this.prisma.storeSubscription.upsert({
       where: { storeId },
       update: {
@@ -121,8 +63,6 @@ export class SubscriptionAdminController {
         planName: body.planName ?? existing?.planName ?? body.planId,
         currentPeriodStart,
         currentPeriodEnd,
-        trialStartAt: null,
-        trialEndAt: null,
         canceledAt: null,
         cancelAtPeriodEnd: false,
       },
@@ -133,8 +73,6 @@ export class SubscriptionAdminController {
         planName: body.planName ?? body.planId,
         currentPeriodStart,
         currentPeriodEnd,
-        trialStartAt: null,
-        trialEndAt: null,
       },
     });
 

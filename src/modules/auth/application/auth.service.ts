@@ -142,12 +142,28 @@ export class AuthService {
     }
   }
 
+  private readonly VALID_PLANS = ['start', 'pro', 'premium'];
+
+  private getPlanName(planId: string): string {
+    switch (planId) {
+      case 'start':
+        return 'Plano Start';
+      case 'pro':
+        return 'Plano Pro';
+      case 'premium':
+        return 'Plano Premium';
+      default:
+        return planId;
+    }
+  }
+
   async register(
     ownerName: string,
     storeName: string,
     email: string,
     whatsapp: string,
     password: string,
+    plan: string,
     cnpj?: string,
     address?: string,
     city?: string,
@@ -186,6 +202,11 @@ export class AuthService {
       const whatsappTrimmed = whatsapp.trim();
       if (whatsappTrimmed.length < 10) {
         throw new BadRequestException('Número do WhatsApp deve ter pelo menos 10 dígitos');
+      }
+
+      // Validar plano selecionado
+      if (!plan || !this.VALID_PLANS.includes(plan)) {
+        throw new BadRequestException(`Plano inválido. Escolha entre: ${this.VALID_PLANS.join(', ')}`);
       }
 
       // Validar CNPJ quando informado
@@ -268,6 +289,24 @@ export class AuthService {
 
       console.log('✅ Usuário criado como ADMIN da loja');
 
+      // Criar assinatura com status PENDING_PAYMENT vinculada ao plano selecionado
+      await this.prisma.storeSubscription.create({
+        data: {
+          storeId: store.id,
+          status: 'PENDING_PAYMENT',
+          planId: plan,
+          planName: this.getPlanName(plan),
+          currentPeriodStart: null,
+          currentPeriodEnd: null,
+        },
+      });
+
+      console.log('✅ Assinatura criada com status PENDING_PAYMENT:', {
+        storeId: store.id,
+        plan,
+        planName: this.getPlanName(plan),
+      });
+
       // Buscar roles do usuário para gerar o token
       const userRoles = await this.prisma.userRole.findMany({
         where: { userId: user.id },
@@ -308,6 +347,11 @@ export class AuthService {
           roles: roles,
           createdAt: user.createdAt,
           storeId: user.storeId,
+        },
+        plan: {
+          id: plan,
+          name: this.getPlanName(plan),
+          status: 'PENDING_PAYMENT',
         },
         token: token,
       };

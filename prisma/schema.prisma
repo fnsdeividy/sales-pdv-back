@@ -91,8 +91,6 @@ model StoreSubscription {
   status               String
   planId               String
   planName             String?
-  trialStartAt         DateTime? @map("trial_start_at")
-  trialEndAt           DateTime? @map("trial_end_at")
   currentPeriodStart   DateTime? @map("current_period_start")
   currentPeriodEnd     DateTime? @map("current_period_end")
   canceledAt           DateTime? @map("canceled_at")

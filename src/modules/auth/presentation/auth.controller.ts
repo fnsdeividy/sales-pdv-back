@@ -15,19 +15,21 @@ export class AuthController {
     email: string; 
     whatsapp: string; 
     password: string;
+    plan: string;
     cnpj?: string;
     address?: string;
     city?: string;
     state?: string;
     zipCode?: string;
   }) {
-    console.log('Tentativa de registro para:', registerDto.email);
+    console.log('Tentativa de registro para:', registerDto.email, '| Plano:', registerDto.plan);
     return this.authService.register(
       registerDto.ownerName,
       registerDto.storeName,
       registerDto.email,
       registerDto.whatsapp,
       registerDto.password,
+      registerDto.plan,
       registerDto.cnpj,
       registerDto.address,
       registerDto.city,
