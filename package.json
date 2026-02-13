@@ -4,6 +4,7 @@
   "description": "Backend para o sistema Rosy Sales Flow",
   "main": "dist/main.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "NODE_OPTIONS='--max-old-space-size=400' nest build",
     "build:full": "npm run build && npm run db:setup",
     "build:prod": "./scripts/build-prod.sh",

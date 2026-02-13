@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
 import * as bcrypt from 'bcryptjs';
@@ -216,7 +217,7 @@ export class AuthService {
           city: city?.trim() || null,
           state: state?.trim() || null,
           zipCode: zipCode?.trim() || null,
-        },
+        } as Prisma.StoreCreateInput,
       });
 
       console.log('🏪 Nova loja criada durante registro:', {
@@ -343,9 +344,14 @@ export class AuthService {
         data: {
           passwordResetToken: resetToken,
           passwordResetExpires: resetExpires,
-        },
+        } as Prisma.UserUpdateInput,
       });
-      await this.mailService.sendPasswordResetEmail(user.email, resetToken);
+      try {
+        await this.mailService.sendPasswordResetEmail(user.email, resetToken);
+      } catch (error) {
+        console.error('Erro ao enviar email de redefinição:', error);
+        // Não lançar erro ao usuário para não revelar se o email existe
+      }
     }
 
     return {
@@ -369,7 +375,7 @@ export class AuthService {
       where: {
         passwordResetToken: tokenTrimmed,
         passwordResetExpires: { gt: new Date() },
-      },
+      } as Prisma.UserWhereInput,
       select: { id: true },
     });
 
@@ -384,7 +390,7 @@ export class AuthService {
         password: hashedPassword,
         passwordResetToken: null,
         passwordResetExpires: null,
-      },
+      } as Prisma.UserUpdateInput,
     });
 
     return { message: 'Senha alterada com sucesso. Faça login com a nova senha.' };
