@@ -18,8 +18,13 @@ export class MailService {
       'noreply@pdv.local';
     this.fromName =
       this.configService.get<string>('SENDGRID_FROM_NAME') || 'PDV Inteligente';
+    // URL base do frontend para links (ex.: redefinição de senha).
+    // Produção: https://www.pdv-ai.com.br | Dev: http://localhost:5173
+    const envUrl = this.configService.get<string>('FRONTEND_URL');
+    const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
     this.frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+      envUrl ||
+      (isProduction ? 'https://www.pdv-ai.com.br' : 'http://localhost:5173');
 
     if (this.apiKey) {
       sgMail.setApiKey(this.apiKey);
@@ -27,6 +32,7 @@ export class MailService {
         '[MailService] SendGrid configurado com remetente:',
         `${this.fromName} <${this.fromEmail}>`,
       );
+      console.log('[MailService] FRONTEND_URL para links de email:', this.frontendUrl);
     } else {
       console.warn(
         '[MailService] SENDGRID_API_KEY não configurada. Emails não serão enviados.',

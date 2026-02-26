@@ -136,7 +136,7 @@ O fluxo "Esqueci minha senha" envia o link por email via **SendGrid**. Configure
 - `SENDGRID_API_KEY` – API Key do SendGrid (obrigatória para envio real; sem ela o link é apenas logado em dev).
 - `SENDGRID_FROM_EMAIL` – Email do remetente verificado no SendGrid (ex.: `noreply@seudominio.com`). Alternativas: `SENDGRID_SENDER`, `MAIL_FROM`.
 - `SENDGRID_FROM_NAME` – Nome do remetente (ex.: `"Equipe PDV Inteligente"`). Opcional; quando definido, o email aparece como `"Nome" <email>`.
-- `FRONTEND_URL` – URL do frontend (ex.: `http://localhost:5173`) para montar o link de redefinição.
+- `FRONTEND_URL` – URL do frontend para montar links de email (ex.: redefinição de senha). Em dev: `http://localhost:5173`. Em produção: `https://www.pdv-ai.com.br`. Se não definido, usa localhost em dev ou o domínio de produção em produção.
 
 ## Compile and run the project
 
