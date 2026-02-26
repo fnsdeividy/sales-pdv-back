@@ -22,9 +22,15 @@ export class MailService {
     // Produção: https://www.pdv-ai.com.br | Dev: http://localhost:5173
     const envUrl = this.configService.get<string>('FRONTEND_URL');
     const isProduction = this.configService.get<string>('NODE_ENV') === 'production';
-    this.frontendUrl =
-      envUrl ||
-      (isProduction ? 'https://www.pdv-ai.com.br' : 'http://localhost:5173');
+    const productionUrl = 'https://www.pdv-ai.com.br';
+    const devUrl = 'http://localhost:5173';
+    // Em produção, nunca usar localhost (mesmo se FRONTEND_URL estiver errada)
+    if (isProduction) {
+      this.frontendUrl =
+        envUrl && !envUrl.includes('localhost') ? envUrl : productionUrl;
+    } else {
+      this.frontendUrl = envUrl || devUrl;
+    }
 
     if (this.apiKey) {
       sgMail.setApiKey(this.apiKey);
@@ -36,6 +42,11 @@ export class MailService {
     } else {
       console.warn(
         '[MailService] SENDGRID_API_KEY não configurada. Emails não serão enviados.',
+      );
+    }
+    if (isProduction && this.fromEmail.includes('pdv.local')) {
+      console.warn(
+        '[MailService] SENDGRID_FROM_EMAIL não configurado. Usando remetente padrão - verifique se está aprovado no SendGrid.',
       );
     }
   }
@@ -122,7 +133,7 @@ export class MailService {
             <td style="background-color:#ffffff;border-radius:8px;padding:40px 48px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
               <h1 style="margin:0 0 16px;font-size:20px;font-weight:bold;color:#333333;">Redefinir sua senha</h1>
               <p style="margin:0 0 16px;color:#51545e;">
-                Recebemos uma solicitação para redefinir a senha da sua conta. Clique no botão abaixo para escolher uma nova senha. Este link é válido por <strong>1 hora</strong>.
+                Recebemos uma solicitação para redefinir a senha da sua conta. Clique no botão abaixo para escolher uma nova senha. Este link é válido por <strong>2 horas</strong>.
               </p>
 
               <!-- Botão CTA -->
@@ -181,7 +192,7 @@ export class MailService {
       'Redefinir sua senha',
       '',
       'Recebemos uma solicitação para redefinir a senha da sua conta.',
-      'Acesse o link abaixo para escolher uma nova senha (válido por 1 hora):',
+      'Acesse o link abaixo para escolher uma nova senha (válido por 2 horas):',
       '',
       resetLink,
       '',

@@ -6,7 +6,7 @@ import { MailService } from '../../mail/mail.service';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 
-const PASSWORD_RESET_EXPIRATION_MS = 60 * 60 * 1000; // 1 hora
+const PASSWORD_RESET_EXPIRATION_MS = 2 * 60 * 60 * 1000; // 2 horas
 
 @Injectable()
 export class AuthService {
@@ -392,8 +392,9 @@ export class AuthService {
       });
       try {
         await this.mailService.sendPasswordResetEmail(user.email, resetToken);
+        console.log(`[Auth] Email de redefinição solicitado para: ${user.email}`);
       } catch (error) {
-        console.error('Erro ao enviar email de redefinição:', error);
+        console.error('[Auth] Erro ao enviar email de redefinição:', error);
         // Não lançar erro ao usuário para não revelar se o email existe
       }
     }
@@ -415,15 +416,28 @@ export class AuthService {
       throw new BadRequestException('Senha deve ter pelo menos 6 caracteres');
     }
 
+    const now = new Date();
     const user = await this.prisma.user.findFirst({
       where: {
         passwordResetToken: tokenTrimmed,
-        passwordResetExpires: { gt: new Date() },
+        passwordResetExpires: { gt: now },
       } as Prisma.UserWhereInput,
-      select: { id: true },
+      select: { id: true, passwordResetExpires: true },
     });
 
     if (!user) {
+      // Log para diagnóstico (não revela se o token existe)
+      const anyToken = await this.prisma.user.findFirst({
+        where: { passwordResetToken: tokenTrimmed },
+        select: { passwordResetExpires: true },
+      });
+      if (anyToken) {
+        console.warn(
+          `[Auth] Reset password: token encontrado mas expirado. Expirou em: ${anyToken.passwordResetExpires?.toISOString()}`,
+        );
+      } else {
+        console.warn('[Auth] Reset password: token não encontrado no banco.');
+      }
       throw new BadRequestException('Token inválido ou expirado. Solicite um novo link de redefinição.');
     }
 
